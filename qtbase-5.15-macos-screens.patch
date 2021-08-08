@@ -1,0 +1,194 @@
+diff --git a/src/plugins/platforms/cocoa/qcocoascreen.mm b/src/plugins/platforms/cocoa/qcocoascreen.mm
+index 6a3172fb19fb6aac9a61b1c36e466cc3b8c1ddb7..5986e45aca4055f7b52a4e23d63ee9a57109b6bd 100644
+--- a/src/plugins/platforms/cocoa/qcocoascreen.mm
++++ b/src/plugins/platforms/cocoa/qcocoascreen.mm
+@@ -72,8 +72,6 @@ namespace CoreGraphics {
+     Q_ENUM_NS(DisplayChange)
+ }
+ 
+-NSArray *QCocoaScreen::s_screenConfigurationBeforeUpdate = nil;
+-
+ void QCocoaScreen::initializeScreens()
+ {
+     updateScreens();
+@@ -81,82 +79,22 @@ void QCocoaScreen::initializeScreens()
+     CGDisplayRegisterReconfigurationCallback([](CGDirectDisplayID displayId, CGDisplayChangeSummaryFlags flags, void *userInfo) {
+         Q_UNUSED(userInfo);
+ 
+-        // Displays are reconfigured in batches, and we want to update our screens
+-        // once a batch ends, so that all the states of the displays are up to date.
+-        static int displayReconfigurationsInProgress = 0;
+-
+         const bool beforeReconfigure = flags & kCGDisplayBeginConfigurationFlag;
+-        qCDebug(lcQpaScreen).verbosity(0).nospace() << "Display " << displayId
+-                << (beforeReconfigure ? " about to reconfigure" : " was ")
+-                << QFlags<CoreGraphics::DisplayChange>(flags)
+-                << " with " << displayReconfigurationsInProgress
+-                << " display configuration(s) in progress";
+-
+-        if (!flags) {
+-            // CGDisplayRegisterReconfigurationCallback has been observed to be called
+-            // with flags unset. This seems like a bug. The callback is not paired with
+-            // a matching "completion" callback either, so we don't know whether to treat
+-            // it as a begin or end of reconfigure.
+-            return;
+-        }
++        qCDebug(lcQpaScreen).verbosity(0) << "Display" << displayId
++                << (beforeReconfigure ? "beginning" : "finished") << "reconfigure"
++                << QFlags<CoreGraphics::DisplayChange>(flags);
+ 
+-        if (beforeReconfigure) {
+-            if (!displayReconfigurationsInProgress++) {
+-                // There might have been a screen reconfigure before this that
+-                // we didn't process yet, so do that now if that's the case.
+-                updateScreensIfNeeded();
+-
+-                Q_ASSERT(!s_screenConfigurationBeforeUpdate);
+-                s_screenConfigurationBeforeUpdate = NSScreen.screens;
+-                qCDebug(lcQpaScreen, "Display reconfigure transaction started"
+-                    " with screen configuration %p", s_screenConfigurationBeforeUpdate);
+-
+-                static void (^tryScreenUpdate)();
+-                tryScreenUpdate = ^void () {
+-                    qCDebug(lcQpaScreen) << "Attempting screen update from runloop block";
+-                    if (!updateScreensIfNeeded())
+-                        CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, tryScreenUpdate);
+-                };
+-                CFRunLoopPerformBlock(CFRunLoopGetMain(), kCFRunLoopCommonModes, tryScreenUpdate);
+-            }
+-        } else {
+-            Q_ASSERT_X(displayReconfigurationsInProgress, "QCococaScreen",
+-                "Display configuration transactions are expected to be balanced");
+-
+-            if (!--displayReconfigurationsInProgress) {
+-                qCDebug(lcQpaScreen) << "Display reconfigure transaction completed";
+-                // We optimistically update now, in case the NSScreens have changed
+-                updateScreensIfNeeded();
+-            }
+-        }
++        if (!beforeReconfigure)
++            updateScreens();
+     }, nullptr);
+ 
+     static QMacNotificationObserver screenParameterObserver(NSApplication.sharedApplication,
+         NSApplicationDidChangeScreenParametersNotification, [&]() {
+             qCDebug(lcQpaScreen) << "Received screen parameter change notification";
+-            updateScreensIfNeeded(); // As a last resort we update screens here
++            updateScreens(); // As a last resort we update screens here
+         });
+ }
+ 
+-bool QCocoaScreen::updateScreensIfNeeded()
+-{
+-    if (!s_screenConfigurationBeforeUpdate) {
+-        qCDebug(lcQpaScreen) << "QScreens have already been updated, all good";
+-        return true;
+-    }
+-
+-    if (s_screenConfigurationBeforeUpdate == NSScreen.screens) {
+-        qCDebug(lcQpaScreen) << "Still waiting for NSScreen configuration change";
+-        return false;
+-    }
+-
+-    qCDebug(lcQpaScreen, "NSScreen configuration changed to %p", NSScreen.screens);
+-    updateScreens();
+-
+-    s_screenConfigurationBeforeUpdate = nil;
+-    return true;
+-}
+-
+ /*
+     Update the list of available QScreens, and the properties of existing screens.
+ 
+@@ -310,15 +248,18 @@ void QCocoaScreen::update(CGDirectDisplayID displayId)
+ 
+     Q_ASSERT(isOnline());
+ 
++    // Some properties are only available via NSScreen
++    NSScreen *nsScreen = nativeScreen();
++    if (!nsScreen) {
++        qCDebug(lcQpaScreen) << "Corresponding NSScreen not yet available. Deferring update";
++        return;
++    }
++
+     const QRect previousGeometry = m_geometry;
+     const QRect previousAvailableGeometry = m_availableGeometry;
+     const QDpi previousLogicalDpi = m_logicalDpi;
+     const qreal previousRefreshRate = m_refreshRate;
+ 
+-    // Some properties are only available via NSScreen
+-    NSScreen *nsScreen = nativeScreen();
+-    Q_ASSERT(nsScreen);
+-
+     // The reference screen for the geometry is always the primary screen
+     QRectF primaryScreenGeometry = QRectF::fromCGRect(CGDisplayBounds(CGMainDisplayID()));
+     m_geometry = qt_mac_flip(QRectF::fromCGRect(nsScreen.frame), primaryScreenGeometry).toRect();
+@@ -714,13 +655,17 @@ QList<QPlatformScreen*> QCocoaScreen::virtualSiblings() const
+ 
+ QCocoaScreen *QCocoaScreen::get(NSScreen *nsScreen)
+ {
+-    if (s_screenConfigurationBeforeUpdate) {
+-        qCWarning(lcQpaScreen) << "Trying to resolve screen while waiting for screen reconfigure!";
+-        if (!updateScreensIfNeeded())
+-            qCWarning(lcQpaScreen) << "Failed to do last minute screen update. Expect crashes.";
++    auto displayId = nsScreen.qt_displayId;
++    auto *cocoaScreen = get(displayId);
++    if (!cocoaScreen) {
++        qCWarning(lcQpaScreen) << "Failed to map" << nsScreen
++            << "to QCocoaScreen. Doing last minute update.";
++        updateScreens();
++        cocoaScreen = get(displayId);
++        if (!cocoaScreen)
++            qCWarning(lcQpaScreen) << "Last minute update failed!";
+     }
+-
+-    return get(nsScreen.qt_displayId);
++    return cocoaScreen;
+ }
+ 
+ QCocoaScreen *QCocoaScreen::get(CGDirectDisplayID displayId)
+diff --git a/src/plugins/platforms/cocoa/qcocoawindow.mm b/src/plugins/platforms/cocoa/qcocoawindow.mm
+index ca67718e90bdcb3012bc534b1675012a18e8a1cb..5d2e8b1054777424f3ee3d43946f9c4da83ab51a 100644
+--- a/src/plugins/platforms/cocoa/qcocoawindow.mm
++++ b/src/plugins/platforms/cocoa/qcocoawindow.mm
+@@ -1265,11 +1265,15 @@ void QCocoaWindow::windowDidChangeScreen()
+         return;
+ 
+     // Note: When a window is resized to 0x0 Cocoa will report the window's screen as nil
+-    auto *currentScreen = QCocoaScreen::get(m_view.window.screen);
++    NSScreen *nsScreen = m_view.window.screen;
++
++    qCDebug(lcQpaWindow) << window() << "did change" << nsScreen;
++    QCocoaScreen::updateScreens();
++
+     auto *previousScreen = static_cast<QCocoaScreen*>(screen());
++    auto *currentScreen = QCocoaScreen::get(nsScreen);
+ 
+-    Q_ASSERT_X(!m_view.window.screen || currentScreen,
+-        "QCocoaWindow", "Failed to get QCocoaScreen for NSScreen");
++    qCDebug(lcQpaWindow) << "Screen changed for" << window() << "from" << previousScreen << "to" << currentScreen;
+ 
+     // Note: The previous screen may be the same as the current screen, either because
+     // a) the screen was just reconfigured, which still results in AppKit sending an
+@@ -1282,7 +1286,6 @@ void QCocoaWindow::windowDidChangeScreen()
+     // device-pixel ratio may have changed, and needs to be delivered to all
+     // windows, both top level and child windows.
+ 
+-    qCDebug(lcQpaWindow) << "Screen changed for" << window() << "from" << previousScreen << "to" << currentScreen;
+     QWindowSystemInterface::handleWindowScreenChanged<QWindowSystemInterface::SynchronousDelivery>(
+         window(), currentScreen ? currentScreen->screen() : nullptr);
+ 
+diff --git a/src/plugins/platforms/cocoa/qcocoascreen.h b/src/plugins/platforms/cocoa/qcocoascreen.h
+index dcf6f1c753695ce462cbf84610a68b6fa81224d5..bac9f7bb90922ed3199b4e9c49a5fac7f82abba9 100644
+--- a/src/plugins/platforms/cocoa/qcocoascreen.h
++++ b/src/plugins/platforms/cocoa/qcocoascreen.h
+@@ -96,9 +96,6 @@ private:
+     static void updateScreens();
+     static void cleanupScreens();
+ 
+-    static bool updateScreensIfNeeded();
+-    static NSArray *s_screenConfigurationBeforeUpdate;
+-
+     static void add(CGDirectDisplayID displayId);
+     QCocoaScreen(CGDirectDisplayID displayId);
+     void update(CGDirectDisplayID displayId);
