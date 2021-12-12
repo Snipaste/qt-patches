@@ -1,5 +1,5 @@
 diff --git a/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp b/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
-index c0f4e4d0147495ac784d9cae4a86448f37f1c5e0..981943acdab662991b9d137d4c453cdee24557ac 100644
+index c0f4e4d0147495ac784d9cae4a86448f37f1c5e0..b86897ecf3ea16d27cb74862024dabbd960da963 100644
 --- a/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
 +++ b/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
 @@ -58,6 +58,7 @@
@@ -93,3 +93,13 @@ index c0f4e4d0147495ac784d9cae4a86448f37f1c5e0..981943acdab662991b9d137d4c453cde
      if (msg != NIM_DELETE && !m_visible)
          setIconVisibility(tnd, m_visible);
      if (msg == NIM_ADD || msg == NIM_MODIFY)
+@@ -380,7 +416,8 @@ HICON QWindowsSystemTrayIcon::createIcon(const QIcon &icon)
+     m_hIcon = nullptr;
+     if (icon.isNull())
+         return oldIcon;
+-    const QSize requestedSize = QSize(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
++    // Just take the largest pixmap, so that the application can take control of it.
++    const QSize requestedSize = QSize(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON)) * 10;
+     const QSize size = icon.actualSize(requestedSize);
+     const QPixmap pm = icon.pixmap(size);
+     if (!pm.isNull())
