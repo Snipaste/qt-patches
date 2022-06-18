@@ -1,0 +1,22 @@
+diff --git a/qtbase/src/plugins/platforms/cocoa/qcocoainputcontext.mm b/qtbase/src/plugins/platforms/cocoa/qcocoainputcontext.mm
+index cb77005583e31f0152092430b7ee2e46e6e0e9e6..28964363c5b203534785420295338a0ed3317a33 100644
+--- a/qtbase/src/plugins/platforms/cocoa/qcocoainputcontext.mm
++++ b/qtbase/src/plugins/platforms/cocoa/qcocoainputcontext.mm
+@@ -117,8 +117,17 @@ void QCocoaInputContext::commit()
+         return;
+ 
+     QMacAutoReleasePool pool;
++
+     [view unmarkText];
++
+     [view.inputContext discardMarkedText];
++    if (view.inputContext != NSTextInputContext.currentInputContext) {
++        // discardMarkedText will activate the TSM document of the given input context,
++        // which may not match the current input context. To ensure the current input
++        // context is not left in an inconsistent state with a deactivated document
++        // we need to manually activate it here.
++        [NSTextInputContext.currentInputContext activate];
++    }
+ }
+ 
+ 

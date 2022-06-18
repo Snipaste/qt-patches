@@ -1,0 +1,89 @@
+diff --git a/qtbase/src/gui/painting/qpaintengine_raster.cpp b/qtbase/src/gui/painting/qpaintengine_raster.cpp
+index 396fa6ddd30de679357f9b3232750a518f269847..fad9daf1d27ca1db689b4ec30fe1d402d08b3797 100644
+--- a/qtbase/src/gui/painting/qpaintengine_raster.cpp
++++ b/qtbase/src/gui/painting/qpaintengine_raster.cpp
+@@ -1222,7 +1222,6 @@ void QRasterPaintEngine::clip(const QVectorPath &path, Qt::ClipOperation op)
+         ensureOutlineMapper();
+         d->rasterize(d->outlineMapper->convertPath(path), qt_span_clip, &clipData, nullptr);
+ 
+-        newClip->clipTransform = s->matrix;
+         newClip->fixup();
+ 
+         if (s->flags.has_clip_ownership)
+@@ -1307,7 +1306,6 @@ bool QRasterPaintEngine::setClipRectInDeviceCoords(const QRect &r, Qt::ClipOpera
+         return false;
+     }
+ 
+-    s->clip->clipTransform = s->matrix;
+     qrasterpaintengine_dirty_clip(d, s);
+     return true;
+ }
+@@ -1363,7 +1361,6 @@ void QRasterPaintEngine::clip(const QRegion &region, Qt::ClipOperation op)
+         else if (curClip->hasRegionClip)
+             newClip->setClipRegion(r & curClip->clipRegion);
+ 
+-        newClip->clipTransform = s->matrix;
+         qrasterpaintengine_dirty_clip(d, s);
+     }
+ }
+@@ -3687,27 +3684,8 @@ void QRasterPaintEnginePrivate::updateClipping()
+     if (!s->clipEnabled)
+         return;
+ 
+-    bool noClipPath = s->clipPath.isEmpty();
+-    bool noClipRegion = s->clipRegion.isEmpty();
+-
+-    if (noClipPath && noClipRegion)
+-        return;
+-
+-    if (!s->clip)
+-        return;
+-
+-    const QTransform stateTransform = s->matrix;
+-    s->matrix = s->clip->clipTransform;
+-
+     qrasterpaintengine_state_setNoClip(s);
+-
+-    if (noClipRegion) {
+-        q->clip(qtVectorPathForPath(s->clipPath), s->clipOperation);
+-    } else {
+-        q->clip(s->clipRegion, s->clipOperation);
+-    }
+-
+-    s->matrix = stateTransform;
++    replayClipOperations();
+ }
+ 
+ void QRasterPaintEnginePrivate::recalculateFastImages()
+diff --git a/qtbase/src/gui/painting/qpaintengine_raster_p.h b/qtbase/src/gui/painting/qpaintengine_raster_p.h
+index a8dd92c3d3f558941a87c2e8927f74443a23ac8c..28983207f32f58e14c48ccffa88ccdb20717ee2f 100644
+--- a/qtbase/src/gui/painting/qpaintengine_raster_p.h
++++ b/qtbase/src/gui/painting/qpaintengine_raster_p.h
+@@ -374,7 +374,6 @@ public:
+ 
+     QRect clipRect;
+     QRegion clipRegion;
+-    QTransform clipTransform;
+ 
+     uint enabled : 1;
+     uint hasRectClip : 1;
+diff --git a/qtbase/src/gui/painting/qpainter.cpp b/qtbase/src/gui/painting/qpainter.cpp
+index ac289befee38e707077de9cd57c9d4d105250f3f..ae138a9ccb3cc7d7d1e768feaa3b18f5696fcde8 100644
+--- a/qtbase/src/gui/painting/qpainter.cpp
++++ b/qtbase/src/gui/painting/qpainter.cpp
+@@ -2868,7 +2868,6 @@ void QPainter::setClipRegion(const QRegion &r, Qt::ClipOperation op)
+             d->state->clipInfo.clear();
+         d->state->clipInfo.append(QPainterClipInfo(r, op, d->state->matrix));
+         d->state->clipOperation = op;
+-        d->state->clipRegion = r;
+         return;
+     }
+ 
+@@ -3083,7 +3082,6 @@ void QPainter::setClipPath(const QPainterPath &path, Qt::ClipOperation op)
+             d->state->clipInfo.clear();
+         d->state->clipInfo.append(QPainterClipInfo(path, op, d->state->matrix));
+         d->state->clipOperation = op;
+-        d->state->clipPath = path;
+         return;
+     }
+ 

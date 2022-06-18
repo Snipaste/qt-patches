@@ -1,0 +1,13 @@
+diff --git a/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp b/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+index 4ea786667681c35e99c3f742addf918607acb01a..3fc136b6abf393f03e8b2d8ffbc85760e278abfa 100644
+--- a/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
++++ b/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+@@ -559,7 +559,7 @@ static QPoint calcPosition(const QWindow *w, const QWindowCreationContextPtr &co
+ {
+     const QPoint orgPos(context->frameX - invMargins.left(), context->frameY - invMargins.top());
+ 
+-    if (!w || (!w->isTopLevel() && w->surfaceType() != QWindow::OpenGLSurface))
++    if (!w || w->type() != Qt::Window)
+         return orgPos;
+ 
+     // Workaround for QTBUG-50371

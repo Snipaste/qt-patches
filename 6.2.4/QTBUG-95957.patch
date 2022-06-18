@@ -1,0 +1,122 @@
+diff --git a/qtbase/src/gui/kernel/qhighdpiscaling_p.h b/qtbase/src/gui/kernel/qhighdpiscaling_p.h
+index ff87d192399153c2de02e464d66c98397f1aa93c..4b07fe48a7404ccb5bac338d2c4f3cfc0cbc876f 100644
+--- a/qtbase/src/gui/kernel/qhighdpiscaling_p.h
++++ b/qtbase/src/gui/kernel/qhighdpiscaling_p.h
+@@ -219,10 +219,9 @@ inline QRegion scale(const QRegion &region, qreal scaleFactor, QPoint origin = Q
+     if (!QHighDpiScaling::isActive())
+         return region;
+ 
+-    QRegion scaled;
+-    for (const QRect &rect : region)
+-        scaled += scale(QRectF(rect), scaleFactor, origin).toRect();
+-    return scaled;
++    QRegion scaled = region.translated(-origin);
++    scaled = QTransform::fromScale(scaleFactor, scaleFactor).map(scaled);
++    return scaled.translated(origin);
+ }
+ 
+ template <typename T>
+diff --git a/qtbase/src/gui/painting/qmath_p.h b/qtbase/src/gui/painting/qmath_p.h
+index adaae60a43af8886a946557d736ce4249f668170..9d6648c0b27de4a57ecae66406d21e44c7d02088 100644
+--- a/qtbase/src/gui/painting/qmath_p.h
++++ b/qtbase/src/gui/painting/qmath_p.h
+@@ -52,12 +52,27 @@
+ //
+ 
+ #include <qmath.h>
++#include <qtransform.h>
+ 
+ QT_BEGIN_NAMESPACE
+ 
+ static const qreal Q_PI   = qreal(M_PI);     // pi
+ static const qreal Q_MM_PER_INCH = 25.4;
+ 
++inline QRect qt_mapFillRect(const QRectF &rect, const QTransform &xf)
++{
++    // Only for xf <= scaling or 90 degree rotations
++    Q_ASSERT(xf.type() <= QTransform::TxScale
++             || (xf.type() == QTransform::TxRotate && qFuzzyIsNull(xf.m11()) && qFuzzyIsNull(xf.m22())));
++    // Transform the corners instead of the rect to avoid hitting numerical accuracy limit
++    // when transforming topleft and size separately and adding afterwards,
++    // as that can sometimes be slightly off around the .5 point, leading to wrong rounding
++    QPoint pt1 = xf.map(rect.topLeft()).toPoint();
++    QPoint pt2 = xf.map(rect.bottomRight()).toPoint();
++    // Normalize and adjust for the QRect vs. QRectF bottomright
++    return QRect::span(pt1, pt2).adjusted(0, 0, -1, -1);
++}
++
+ QT_END_NAMESPACE
+ 
+ #endif // QMATH_P_H
+diff --git a/qtbase/src/gui/painting/qpaintengine_raster.cpp b/qtbase/src/gui/painting/qpaintengine_raster.cpp
+index 396fa6ddd30de679357f9b3232750a518f269847..1b1ee706aaf9c6a600868c8d62a398ec264f29f7 100644
+--- a/qtbase/src/gui/painting/qpaintengine_raster.cpp
++++ b/qtbase/src/gui/painting/qpaintengine_raster.cpp
+@@ -49,7 +49,7 @@
+ #include <qpainterpath.h>
+ #include <qdebug.h>
+ #include <qbitmap.h>
+-#include <qmath.h>
++#include "qmath_p.h"
+ #include <qrandom.h>
+ 
+ //   #include <private/qdatabuffer_p.h>
+@@ -1194,7 +1194,7 @@ void QRasterPaintEngine::clip(const QVectorPath &path, Qt::ClipOperation op)
+ #endif
+             const qreal *points = path.points();
+             QRectF r(points[0], points[1], points[4]-points[0], points[5]-points[1]);
+-            if (setClipRectInDeviceCoords(s->matrix.mapRect(r).toAlignedRect(), op))
++            if (setClipRectInDeviceCoords(qt_mapFillRect(r, s->matrix), op))
+                 return;
+         }
+     }
+@@ -1254,7 +1254,7 @@ void QRasterPaintEngine::clip(const QRect &rect, Qt::ClipOperation op)
+         QPaintEngineEx::clip(rect, op);
+         return;
+ 
+-    } else if (!setClipRectInDeviceCoords(s->matrix.mapRect(QRectF(rect)).toRect(), op)) {
++    } else if (!setClipRectInDeviceCoords(qt_mapFillRect(rect, s->matrix), op)) {
+         QPaintEngineEx::clip(rect, op);
+         return;
+     }
+diff --git a/qtbase/src/gui/painting/qtransform.cpp b/qtbase/src/gui/painting/qtransform.cpp
+index 9065b9d4b9b1f1fc2c2bb5e694605c5ccbb795a3..3e9c584b516e767c8e9e81316e5558c98418f251 100644
+--- a/qtbase/src/gui/painting/qtransform.cpp
++++ b/qtbase/src/gui/painting/qtransform.cpp
+@@ -45,7 +45,7 @@
+ #include "qpainterpath.h"
+ #include "qpainterpath_p.h"
+ #include "qvariant.h"
+-#include <qmath.h>
++#include "qmath_p.h"
+ #include <qnumeric.h>
+ 
+ #include <private/qbezier_p.h>
+@@ -1487,12 +1487,12 @@ QRegion QTransform::map(const QRegion &r) const
+         QRegion res;
+         if (m11() < 0 || m22() < 0) {
+             for (const QRect &rect : r)
+-                res += mapRect(QRectF(rect)).toRect();
++                res += qt_mapFillRect(QRectF(rect), *this);
+         } else {
+             QVarLengthArray<QRect, 32> rects;
+             rects.reserve(r.rectCount());
+             for (const QRect &rect : r) {
+-                QRect nr = mapRect(QRectF(rect)).toRect();
++                QRect nr = qt_mapFillRect(QRectF(rect), *this);
+                 if (!nr.isEmpty())
+                     rects.append(nr);
+             }
+diff --git a/qtbase/src/opengl/qopenglpaintengine.cpp b/qtbase/src/opengl/qopenglpaintengine.cpp
+index 45a513110a2ddb8c33a3ca7b3964d125819a36bd..d4f694dcab761ab638b0288e4e7f0a65f025ad0b 100644
+--- a/qtbase/src/opengl/qopenglpaintengine.cpp
++++ b/qtbase/src/opengl/qopenglpaintengine.cpp
+@@ -2526,7 +2526,7 @@ void QOpenGL2PaintEngineEx::clip(const QVectorPath &path, Qt::ClipOperation op)
+                 && qFuzzyIsNull(state()->matrix.m11())
+                 && qFuzzyIsNull(state()->matrix.m22())))
+         {
+-            state()->rectangleClip = state()->rectangleClip.intersected(state()->matrix.mapRect(rect).toAlignedRect());
++            state()->rectangleClip &= qt_mapFillRect(rect, state()->matrix);
+             d->updateClipScissorTest();
+             return;
+         }

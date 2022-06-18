@@ -1,0 +1,45 @@
+diff --git a/qtbase/src/corelib/kernel/qcore_mac_p.h b/qtbase/src/corelib/kernel/qcore_mac_p.h
+index 3e169d0f2c988fb4b84970a037267ba32d133d11..e9227de493fccf1bf06214560a806923e15b4010 100644
+--- a/qtbase/src/corelib/kernel/qcore_mac_p.h
++++ b/qtbase/src/corelib/kernel/qcore_mac_p.h
+@@ -113,6 +113,9 @@ kern_return_t IOObjectRelease(io_object_t object);
+ Q_FORWARD_DECLARE_OBJC_CLASS(NSObject);
+ Q_FORWARD_DECLARE_OBJC_CLASS(NSString);
+ 
++// @compatibility_alias doesn't work with categories or their methods
++#define QtExtras QT_MANGLE_NAMESPACE(QtExtras)
++
+ QT_BEGIN_NAMESPACE
+ template <typename T, typename U, auto RetainFunction, auto ReleaseFunction>
+ class QAppleRefCounted
+diff --git a/qtbase/src/gui/painting/qcoregraphics_p.h b/qtbase/src/gui/painting/qcoregraphics_p.h
+index afc03c25e337e97be235ec705812ba129b7cd48e..a18b07b194d66a151912e1cf8cd8064992b8b708 100644
+--- a/qtbase/src/gui/painting/qcoregraphics_p.h
++++ b/qtbase/src/gui/painting/qcoregraphics_p.h
+@@ -72,6 +72,11 @@ Q_GUI_EXPORT CGBitmapInfo qt_mac_bitmapInfoForImage(const QImage &image);
+ Q_GUI_EXPORT QPixmap qt_mac_toQPixmap(const NSImage *image, const QSizeF &size);
+ 
+ QT_END_NAMESPACE
++
++// @compatibility_alias doesn't work with categories or their methods
++#define imageFromQImage QT_MANGLE_NAMESPACE(imageFromQImage)
++#define imageFromQIcon QT_MANGLE_NAMESPACE(imageFromQIcon)
++
+ @interface NSImage (QtExtras)
+ + (instancetype)imageFromQImage:(const QT_PREPEND_NAMESPACE(QImage) &)image;
+ + (instancetype)imageFromQIcon:(const QT_PREPEND_NAMESPACE(QIcon) &)icon;
+diff --git a/qtbase/src/plugins/platforms/cocoa/qcocoascreen.h b/qtbase/src/plugins/platforms/cocoa/qcocoascreen.h
+index 02fbd13197823a72592c2128e73ebfede5e1e221..1401e01197c393ea4055e48fdcd42949429d0d68 100644
+--- a/qtbase/src/plugins/platforms/cocoa/qcocoascreen.h
++++ b/qtbase/src/plugins/platforms/cocoa/qcocoascreen.h
+@@ -145,6 +145,10 @@ QDebug operator<<(QDebug debug, const QCocoaScreen *screen);
+ QT_END_NAMESPACE
+ 
+ #if defined(__OBJC__)
++
++// @compatibility_alias doesn't work with categories or their methods
++#define qt_displayId QT_MANGLE_NAMESPACE(qt_displayId)
++
+ @interface NSScreen (QtExtras)
+ @property(readonly) CGDirectDisplayID qt_displayId;
+ @end

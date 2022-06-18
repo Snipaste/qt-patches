@@ -1,0 +1,73 @@
+diff --git a/qtbase/src/plugins/platforms/xcb/qxcbwindow.cpp b/qtbase/src/plugins/platforms/xcb/qxcbwindow.cpp
+index 4bd4887d511988cd203bfb040ec7e3db669d5555..d4b21e699991c76b42d768d7e8bcf696c1661b88 100644
+--- a/qtbase/src/plugins/platforms/xcb/qxcbwindow.cpp
++++ b/qtbase/src/plugins/platforms/xcb/qxcbwindow.cpp
+@@ -92,6 +92,8 @@ enum {
+ 
+ QT_BEGIN_NAMESPACE
+ 
++Q_LOGGING_CATEGORY(lcQpaWindow, "qt.qpa.window");
++
+ Q_DECLARE_TYPEINFO(xcb_rectangle_t, Q_PRIMITIVE_TYPE);
+ 
+ #undef FocusIn
+@@ -539,6 +541,7 @@ void QXcbWindow::destroy()
+     }
+ 
+     m_mapped = false;
++    m_recreationReasons = RecreationNotNeeded;
+ 
+     if (m_pendingSyncRequest)
+         m_pendingSyncRequest->invalidate();
+@@ -681,6 +684,11 @@ void QXcbWindow::show()
+         return;
+ 
+     if (window()->isTopLevel()) {
++        if (m_recreationReasons != RecreationNotNeeded) {
++            qCDebug(lcQpaWindow) << "QXcbWindow: need to recreate window" << window() << m_recreationReasons;
++            create();
++            m_recreationReasons = RecreationNotNeeded;
++        }
+ 
+         // update WM_NORMAL_HINTS
+         propagateSizeHints();
+@@ -903,6 +911,12 @@ void QXcbWindow::setWindowFlags(Qt::WindowFlags flags)
+     if (type == Qt::Popup)
+         flags |= Qt::X11BypassWindowManagerHint;
+ 
++    Qt::WindowFlags oldflags = window()->flags();
++    if ((oldflags & Qt::WindowStaysOnTopHint) != (flags & Qt::WindowStaysOnTopHint))
++        m_recreationReasons |= WindowStaysOnTopHintChanged;
++    if ((oldflags & Qt::WindowStaysOnBottomHint) != (flags & Qt::WindowStaysOnBottomHint))
++        m_recreationReasons |= WindowStaysOnBottomHintChanged;
++
+     const quint32 mask = XCB_CW_OVERRIDE_REDIRECT | XCB_CW_EVENT_MASK;
+     const quint32 values[] = {
+          // XCB_CW_OVERRIDE_REDIRECT
+diff --git a/qtbase/src/plugins/platforms/xcb/qxcbwindow.h b/qtbase/src/plugins/platforms/xcb/qxcbwindow.h
+index 0dc2af3a82dc4454e2a8ed4b1faf905f2f23a259..277fef3885a6531e350c8e5cd87f4d0dda2cb9e4 100644
+--- a/qtbase/src/plugins/platforms/xcb/qxcbwindow.h
++++ b/qtbase/src/plugins/platforms/xcb/qxcbwindow.h
+@@ -74,6 +74,13 @@ public:
+ 
+     Q_DECLARE_FLAGS(NetWmStates, NetWmState)
+ 
++    enum RecreationReason {
++        RecreationNotNeeded = 0,
++        WindowStaysOnTopHintChanged = 0x1,
++        WindowStaysOnBottomHintChanged = 0x2
++    };
++    Q_DECLARE_FLAGS(RecreationReasons, RecreationReason)
++
+     enum Task {
+         Map,
+         Unmap,
+@@ -288,6 +295,8 @@ protected:
+ 
+     qreal m_sizeHintsScaleFactor = 1.0;
+ 
++    RecreationReasons m_recreationReasons = RecreationNotNeeded;
++
+     bool m_wmStateValid = true;
+     QVector<Task> m_deferredTasks;
+     bool m_isWmManagedWindow = true;

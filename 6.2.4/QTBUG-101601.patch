@@ -1,0 +1,20 @@
+diff --git a/qtbase/src/gui/kernel/qwindowsysteminterface.cpp b/qtbase/src/gui/kernel/qwindowsysteminterface.cpp
+index 03973052caddab74aa03188df3005c84b14beaa5..0c6133d8cef0496f55f7c19ffba4b6d4fd24e1a9 100644
+--- a/qtbase/src/gui/kernel/qwindowsysteminterface.cpp
++++ b/qtbase/src/gui/kernel/qwindowsysteminterface.cpp
+@@ -42,6 +42,7 @@
+ #include "private/qguiapplication_p.h"
+ #include "private/qevent_p.h"
+ #include "private/qpointingdevice_p.h"
++#include "private/qscreen_p.h"
+ #include <QAbstractEventDispatcher>
+ #include <qpa/qplatformintegration.h>
+ #include <qdebug.h>
+@@ -789,6 +790,7 @@ void QWindowSystemInterface::handleScreenAdded(QPlatformScreen *ps, bool isPrima
+ 
+     QGuiApplicationPrivate::resetCachedDevicePixelRatio();
+     QHighDpiScaling::updateHighDpiScaling();
++    screen->d_func()->updateHighDpi();
+ 
+     emit qGuiApp->screenAdded(screen);
+ 

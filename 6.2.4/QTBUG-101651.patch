@@ -1,0 +1,19 @@
+diff --git a/qtbase/src/widgets/graphicsview/qgraphicsscene.cpp b/qtbase/src/widgets/graphicsview/qgraphicsscene.cpp
+index 528edcea059cf04559a1609ed19f9028af883c42..f9498ffffb1a4953d3ecbac59c58665b09026575 100644
+--- a/qtbase/src/widgets/graphicsview/qgraphicsscene.cpp
++++ b/qtbase/src/widgets/graphicsview/qgraphicsscene.cpp
+@@ -2283,10 +2283,11 @@ void QGraphicsScene::clearSelection()
+     Q_D(QGraphicsScene);
+ 
+     // Disable emitting selectionChanged
+-    ++d->selectionChanging;
+-    bool changed = !d->selectedItems.isEmpty();
++    // iterate over a copy, as clearing selection might invalidate selectedItems
++    const auto selectedItems = d->selectedItems;
++    bool changed = !selectedItems.isEmpty();
+ 
+-    for (QGraphicsItem *item : qAsConst(d->selectedItems))
++    for (QGraphicsItem *item : selectedItems)
+         item->setSelected(false);
+     d->selectedItems.clear();
+ 
