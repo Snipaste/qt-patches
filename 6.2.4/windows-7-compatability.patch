@@ -1,65 +1,3 @@
-diff --git a/qtbase/cmake/QtInternalTargets.cmake b/qtbase/cmake/QtInternalTargets.cmake
-index 6456d5b250615b1d1fc360189d25ae9daa7c4a29..8b2cec28f8bb4b15b2638f7d62d6d4f39fb6880f 100644
---- a/qtbase/cmake/QtInternalTargets.cmake
-+++ b/qtbase/cmake/QtInternalTargets.cmake
-@@ -286,8 +286,14 @@ if (MSVC)
-         $<$<NOT:$<CONFIG:Debug>>:-guard:cf>
-     )
- 
-+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-+        set(YY_THUNKS_OBJ "${CMAKE_SOURCE_DIR}/YY-Thunks/x64/YY_Thunks_for_Vista.obj")
-+    elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
-+        set(YY_THUNKS_OBJ "${CMAKE_SOURCE_DIR}/YY-Thunks/x86/YY_Thunks_for_Vista.obj")
-+    endif()
-     target_link_options(PlatformCommonInternal INTERFACE
-         -DYNAMICBASE -NXCOMPAT
-+        "${YY_THUNKS_OBJ}"
-         $<$<NOT:$<CONFIG:Debug>>:-OPT:REF -OPT:ICF -GUARD:CF>
-     )
- endif()
-diff --git a/qtbase/src/gui/rhi/qrhid3d11.cpp b/qtbase/src/gui/rhi/qrhid3d11.cpp
-index 283be47cb3414cf3c0acd4fa6cc5910a8ee512d0..09aec084ca0c6d212cf95a4a6f7083415de7bf88 100644
---- a/qtbase/src/gui/rhi/qrhid3d11.cpp
-+++ b/qtbase/src/gui/rhi/qrhid3d11.cpp
-@@ -169,6 +169,8 @@ inline Int aligned(Int v, Int byteAlign)
- 
- static IDXGIFactory1 *createDXGIFactory2()
- {
-+    return nullptr;
-+/*
-     IDXGIFactory1 *result = nullptr;
-     const HRESULT hr = CreateDXGIFactory2(0, IID_IDXGIFactory2, reinterpret_cast<void **>(&result));
-     if (FAILED(hr)) {
-@@ -176,6 +178,7 @@ static IDXGIFactory1 *createDXGIFactory2()
-         result = nullptr;
-     }
-     return result;
-+*/
- }
- 
- static IDXGIFactory1 *createDXGIFactory1()
-diff --git a/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp b/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
-index 4967ac3afa4b95e0cbabcec75a8bd6229a5d3b05..60db383444fe0cc18c784099a3da8c17911ec5ed 100644
---- a/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
-+++ b/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
-@@ -1193,9 +1193,14 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption
-             QPoint p1 = QStyle::visualPos(option->direction, menuitem->rect, QPoint(checkcol, rect.top()));
-             QPoint p2 = QStyle::visualPos(option->direction, menuitem->rect, QPoint(checkcol, rect.bottom()));
-             QRect gutterRect(p1.x(), p1.y(), gutterWidth, p2.y() - p1.y() + 1);
--            XPThemeData theme2(widget, painter, QWindowsXPStylePrivate::MenuTheme,
--                               MENU_POPUPGUTTER, stateId, gutterRect);
--            d->drawBackground(theme2);
-+            static const bool isWindow10AndAbove = QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows10;
-+            if (!isWindow10AndAbove)
-+            {
-+                // The gutter is no longer needed on Windows 10 and 11.
-+                XPThemeData theme2(widget, painter, QWindowsXPStylePrivate::MenuTheme,
-+                                   MENU_POPUPGUTTER, stateId, gutterRect);
-+                d->drawBackground(theme2);
-+            }
- 
-             int x, y, w, h;
-             menuitem->rect.getRect(&x, &y, &w, &h);
 diff --git a/YY-Thunks/x64/YY_Thunks_for_Vista.obj b/YY-Thunks/x64/YY_Thunks_for_Vista.obj
 new file mode 100644
 index 0000000000000000000000000000000000000000..b7cd3396496cee3c0a3ec2128ee1d91eb9b19da7
@@ -6409,3 +6347,43 @@ Phh|=G4^5hjb20z_UuWUM
 literal 0
 HcmV?d00001
 
+diff --git a/qtbase/cmake/QtInternalTargets.cmake b/qtbase/cmake/QtInternalTargets.cmake
+index 6456d5b250615b1d1fc360189d25ae9daa7c4a29..8b2cec28f8bb4b15b2638f7d62d6d4f39fb6880f 100644
+--- a/qtbase/cmake/QtInternalTargets.cmake
++++ b/qtbase/cmake/QtInternalTargets.cmake
+@@ -286,8 +286,14 @@ if (MSVC)
+         $<$<NOT:$<CONFIG:Debug>>:-guard:cf>
+     )
+ 
++    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
++        set(YY_THUNKS_OBJ "${CMAKE_SOURCE_DIR}/YY-Thunks/x64/YY_Thunks_for_Vista.obj")
++    elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
++        set(YY_THUNKS_OBJ "${CMAKE_SOURCE_DIR}/YY-Thunks/x86/YY_Thunks_for_Vista.obj")
++    endif()
+     target_link_options(PlatformCommonInternal INTERFACE
+         -DYNAMICBASE -NXCOMPAT
++        "${YY_THUNKS_OBJ}"
+         $<$<NOT:$<CONFIG:Debug>>:-OPT:REF -OPT:ICF -GUARD:CF>
+     )
+ endif()
+diff --git a/qtbase/src/gui/rhi/qrhid3d11.cpp b/qtbase/src/gui/rhi/qrhid3d11.cpp
+index 283be47cb3414cf3c0acd4fa6cc5910a8ee512d0..09aec084ca0c6d212cf95a4a6f7083415de7bf88 100644
+--- a/qtbase/src/gui/rhi/qrhid3d11.cpp
++++ b/qtbase/src/gui/rhi/qrhid3d11.cpp
+@@ -169,6 +169,8 @@ inline Int aligned(Int v, Int byteAlign)
+ 
+ static IDXGIFactory1 *createDXGIFactory2()
+ {
++    return nullptr;
++/*
+     IDXGIFactory1 *result = nullptr;
+     const HRESULT hr = CreateDXGIFactory2(0, IID_IDXGIFactory2, reinterpret_cast<void **>(&result));
+     if (FAILED(hr)) {
+@@ -176,6 +178,7 @@ static IDXGIFactory1 *createDXGIFactory2()
+         result = nullptr;
+     }
+     return result;
++*/
+ }
+ 
+ static IDXGIFactory1 *createDXGIFactory1()
