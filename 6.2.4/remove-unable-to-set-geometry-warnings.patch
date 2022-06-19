@@ -1,0 +1,69 @@
+diff --git a/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp b/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+index 4ea786667681c35e99c3f742addf918607acb01a..3bd268cef1e848e80b9b30e7303823be111ed6bf 100644
+--- a/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
++++ b/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+@@ -1916,51 +1916,6 @@ QRect QWindowsWindow::normalGeometry() const
+     return frame.isValid() ? frame.marginsRemoved(margins) : frame;
+ }
+ 
+-static QString msgUnableToSetGeometry(const QWindowsWindow *platformWindow,
+-                                      const QRect &requestedRect,
+-                                      const QRect &obtainedRect,
+-                                      const QMargins &fullMargins,
+-                                      const QMargins &customMargins)
+-{
+-    QString result;
+-    QDebug debug(&result);
+-    debug.nospace();
+-    debug.noquote();
+-    const auto window = platformWindow->window();
+-    debug << "Unable to set geometry ";
+-    formatBriefRectangle(debug, requestedRect);
+-    debug << " (frame: ";
+-    formatBriefRectangle(debug, requestedRect + fullMargins);
+-    debug << ") on " << window->metaObject()->className() << "/\""
+-          << window->objectName() << "\" on \"" << window->screen()->name()
+-          << "\". Resulting geometry: ";
+-    formatBriefRectangle(debug, obtainedRect);
+-    debug << " (frame: ";
+-    formatBriefRectangle(debug, obtainedRect + fullMargins);
+-    debug << ") margins: ";
+-    formatBriefMargins(debug, fullMargins);
+-    if (!customMargins.isNull()) {
+-       debug << " custom margin: ";
+-       formatBriefMargins(debug, customMargins);
+-    }
+-    const auto minimumSize = window->minimumSize();
+-    const bool hasMinimumSize = !minimumSize.isEmpty();
+-    if (hasMinimumSize)
+-        debug << " minimum size: " << minimumSize.width() << 'x' << minimumSize.height();
+-    const auto maximumSize = window->maximumSize();
+-    const bool hasMaximumSize = maximumSize.width() != QWINDOWSIZE_MAX || maximumSize.height() != QWINDOWSIZE_MAX;
+-    if (hasMaximumSize)
+-        debug << " maximum size: " << maximumSize.width() << 'x' << maximumSize.height();
+-    if (hasMinimumSize || hasMaximumSize) {
+-        MINMAXINFO minmaxInfo;
+-        memset(&minmaxInfo, 0, sizeof(minmaxInfo));
+-        platformWindow->getSizeHints(&minmaxInfo);
+-        debug << ' ' << minmaxInfo;
+-    }
+-    debug << ')';
+-    return result;
+-}
+-
+ void QWindowsWindow::setGeometry(const QRect &rectIn)
+ {
+     QBoolBlocker b(m_inSetgeometry);
+@@ -1981,12 +1936,6 @@ void QWindowsWindow::setGeometry(const QRect &rectIn)
+         setFlag(WithinSetGeometry);
+         setGeometry_sys(rect);
+         clearFlag(WithinSetGeometry);
+-        if (m_data.geometry != rect && (isVisible() || QLibraryInfo::isDebugBuild())) {
+-            const auto warning =
+-                msgUnableToSetGeometry(this, rectIn, m_data.geometry,
+-                                       m_data.fullFrameMargins, m_data.customMargins);
+-            qWarning("%s: %s", __FUNCTION__, qPrintable(warning));
+-        }
+     } else {
+         QPlatformWindow::setGeometry(rect);
+     }
