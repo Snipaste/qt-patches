@@ -1,8 +1,8 @@
 diff --git a/qtbase/src/widgets/widgets/qmenu.cpp b/qtbase/src/widgets/widgets/qmenu.cpp
-index 323fc1d7ea0a0badb34509220108ce21d9b0fca5..4751deb9582035eb90222dbe5ca48324477e040b 100644
+index 323fc1d7ea0a0badb34509220108ce21d9b0fca5..d5956cb7d688b55c54c156747fb0144c400d3905 100644
 --- a/qtbase/src/widgets/widgets/qmenu.cpp
 +++ b/qtbase/src/widgets/widgets/qmenu.cpp
-@@ -2429,6 +2429,15 @@ void QMenuPrivate::popup(const QPoint &p, QAction *atAction, PositionFunction po
+@@ -2429,6 +2429,16 @@ void QMenuPrivate::popup(const QPoint &p, QAction *atAction, PositionFunction po
          lastContextMenu = contextMenu;
      }
  
@@ -12,9 +12,18 @@ index 323fc1d7ea0a0badb34509220108ce21d9b0fca5..4751deb9582035eb90222dbe5ca48324
 +    // (and screen set could 'fail' on oldscreen == newScreen if created before causing the
 +    // itemsDirty not to be set though needed to get the correct size on first show).
 +    if (!windowHandle()) {
++        q->move(p);
 +        createWinId();
 +    }
 +
  #if QT_CONFIG(menubar)
      // if this menu is part of a chain attached to a QMenuBar, set the
      // _NET_WM_WINDOW_TYPE_DROPDOWN_MENU X11 window type
+@@ -2719,7 +2729,6 @@ QAction *QMenuPrivate::exec(const QPoint &p, QAction *action, PositionFunction p
+ {
+     Q_Q(QMenu);
+     q->ensurePolished();
+-    q->createWinId();
+     QEventLoop evtLoop;
+     eventLoop = &evtLoop;
+     popup(p, action, positionFunction);
