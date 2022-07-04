@@ -1,8 +1,8 @@
 diff --git a/qtbase/src/widgets/widgets/qmenu.cpp b/qtbase/src/widgets/widgets/qmenu.cpp
-index 323fc1d7ea0a0badb34509220108ce21d9b0fca5..d5956cb7d688b55c54c156747fb0144c400d3905 100644
+index 323fc1d7ea0a0badb34509220108ce21d9b0fca5..e43ab4181c9dd29c70eaedcf3aef3be3a41936ed 100644
 --- a/qtbase/src/widgets/widgets/qmenu.cpp
 +++ b/qtbase/src/widgets/widgets/qmenu.cpp
-@@ -2429,6 +2429,16 @@ void QMenuPrivate::popup(const QPoint &p, QAction *atAction, PositionFunction po
+@@ -2429,6 +2429,23 @@ void QMenuPrivate::popup(const QPoint &p, QAction *atAction, PositionFunction po
          lastContextMenu = contextMenu;
      }
  
@@ -13,13 +13,20 @@ index 323fc1d7ea0a0badb34509220108ce21d9b0fca5..d5956cb7d688b55c54c156747fb0144c
 +    // itemsDirty not to be set though needed to get the correct size on first show).
 +    if (!windowHandle()) {
 +        q->move(p);
++        // Qt will use the original geometry to decide which screen the widget belongs to.
++        // Since the default widget size is 640x480, when the menu appears near to the screen border,
++        // its initial geometry center would be in another screen. In such a case, we may get a incorrect
++        // initial sizeHint() (used a few lines below) due to wrong screen dpi, resulting a truncated menu.
++        // As the screen of a menu should always determince by its initial position, we resize it to 1x1
++        // to get the correct sizeHint().
++        q->resize(QSize(1, 1));
 +        createWinId();
 +    }
 +
  #if QT_CONFIG(menubar)
      // if this menu is part of a chain attached to a QMenuBar, set the
      // _NET_WM_WINDOW_TYPE_DROPDOWN_MENU X11 window type
-@@ -2719,7 +2729,6 @@ QAction *QMenuPrivate::exec(const QPoint &p, QAction *action, PositionFunction p
+@@ -2719,7 +2736,6 @@ QAction *QMenuPrivate::exec(const QPoint &p, QAction *action, PositionFunction p
  {
      Q_Q(QMenu);
      q->ensurePolished();
