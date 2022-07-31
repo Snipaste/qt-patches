@@ -1,0 +1,84 @@
+diff --git a/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp b/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
+index fdb65e7f8f672b0afdfc1a96fc68f506514e7048..5de9855f589ca98672c298c733aec29f6b61b901 100644
+--- a/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
++++ b/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
+@@ -265,17 +265,22 @@ void QWindowsIntegrationPrivate::parseOptions(QWindowsIntegration *q, const QStr
+ 
+     if (!dpiAwarenessSet) { // Set only once in case of repeated instantiations of QGuiApplication.
+         if (!QCoreApplication::testAttribute(Qt::AA_PluginApplication)) {
+-
+-            // DpiAwareV2 requires using new API
+-            if (dpiAwareness == QtWindows::ProcessPerMonitorV2DpiAware && hasDpiAwarenessContext) {
+-                m_context.setProcessDpiV2Awareness();
+-                qCDebug(lcQpaWindows)
+-                    << __FUNCTION__ << "DpiAwareness: DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2";
+-            } else {
++            if (dpiAwareness == QtWindows::ProcessPerMonitorV2DpiAware) {
++                // DpiAwareV2 requires using new API
++                if (m_context.setProcessDpiV2Awareness()) {
++                    qCDebug(lcQpaWindows,
++                            "DpiAwareness: DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2");
++                    dpiAwarenessSet = true;
++                } else {
++                    // fallback to old API
++                    dpiAwareness = QtWindows::ProcessPerMonitorDpiAware;
++                }
++            }
++            if (!dpiAwarenessSet) {
+                 m_context.setProcessDpiAwareness(dpiAwareness);
+                 qCDebug(lcQpaWindows)
+-                    << __FUNCTION__ << "DpiAwareness=" << dpiAwareness
+-                    << "effective process DPI awareness=" << QWindowsContext::processDpiAwareness();
++                        << "DpiAwareness=" << dpiAwareness << "effective process DPI awareness="
++                        << QWindowsContext::processDpiAwareness();
+             }
+         }
+         dpiAwarenessSet = true;
+diff --git a/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp b/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
+index 09a38b2a096cb7c70a4a9eefd5c35a22bffff313..e8ad950203da6a443543b8e9f8584be0687374d8 100644
+--- a/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
++++ b/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
+@@ -500,21 +500,20 @@ void QWindowsContext::setProcessDpiAwareness(QtWindows::ProcessDpiAwareness dpiA
+     }
+ }
+ 
+-void QWindowsContext::setProcessDpiV2Awareness()
++bool QWindowsContext::setProcessDpiV2Awareness()
+ {
+     qCDebug(lcQpaWindows) << __FUNCTION__;
+-    const BOOL ok = QWindowsContext::user32dll.setProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+-    if (ok) {
+-        QWindowsContextPrivate::m_v2DpiAware = true;
+-    } else {
++    const BOOL ok = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
++    if (!ok) {
+         const HRESULT errorCode = GetLastError();
+-        // ERROR_ACCESS_DENIED means set externally (MSVC manifest or external app loading Qt plugin).
+-        // Silence warning in that case unless debug is enabled.
+-        if (errorCode != ERROR_ACCESS_DENIED || lcQpaWindows().isDebugEnabled()) {
+-            qWarning().noquote().nospace() << "setProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) failed: "
++        qCWarning(lcQpaWindows).noquote().nospace()
++                << "setProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) "
++                   "failed: "
+                 << QWindowsContext::comErrorString(errorCode);
+-        }
++        return false;
+     }
++    QWindowsContextPrivate::m_v2DpiAware = true;
++    return true;
+ }
+ 
+ bool QWindowsContext::isDarkMode()
+diff --git a/qtbase/src/plugins/platforms/windows/qwindowscontext.h b/qtbase/src/plugins/platforms/windows/qwindowscontext.h
+index 0ddb35eb0712964d67bfab21f1c12b98f87592b4..b6cd8154c678e83dfbd7c08c2406c4726a87ff7b 100644
+--- a/qtbase/src/plugins/platforms/windows/qwindowscontext.h
++++ b/qtbase/src/plugins/platforms/windows/qwindowscontext.h
+@@ -236,7 +236,7 @@ public:
+     static void setTabletAbsoluteRange(int a);
+     void setProcessDpiAwareness(QtWindows::ProcessDpiAwareness dpiAwareness);
+     static int processDpiAwareness();
+-    void setProcessDpiV2Awareness();
++    bool setProcessDpiV2Awareness();
+ 
+     static bool isDarkMode();
+ 

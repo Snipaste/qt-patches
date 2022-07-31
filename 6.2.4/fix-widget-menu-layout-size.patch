@@ -1,0 +1,13 @@
+diff --git a/qtbase/src/widgets/widgets/qmenu.cpp b/qtbase/src/widgets/widgets/qmenu.cpp
+index e43ab4181c9dd29c70eaedcf3aef3be3a41936ed..8fe8e9cd405fe001ae207f60314d38cf93839bbc 100644
+--- a/qtbase/src/widgets/widgets/qmenu.cpp
++++ b/qtbase/src/widgets/widgets/qmenu.cpp
+@@ -425,6 +425,8 @@ void QMenuPrivate::updateActionRects(const QRect &screen) const
+ 
+         QSize sz;
+         if (QWidget *w = widgetItems.value(action)) {
++          if (w->layout())
++            w->layout()->activate();
+           sz = w->sizeHint().expandedTo(w->minimumSize()).expandedTo(w->minimumSizeHint()).boundedTo(w->maximumSize());
+         } else {
+             //calc what I think the size is..

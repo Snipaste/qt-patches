@@ -1,0 +1,263 @@
+diff --git a/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp b/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
+index 4967ac3afa4b95e0cbabcec75a8bd6229a5d3b05..8e1883b806359a089d0f77d2cbfe9ccb7dac66d6 100644
+--- a/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
++++ b/qtbase/src/plugins/styles/windowsvista/qwindowsvistastyle.cpp
+@@ -425,7 +425,7 @@ void QWindowsVistaStyle::drawPrimitive(PrimitiveElement element, const QStyleOpt
+                 XPThemeData themeSize = theme;
+                 themeSize.partId = TVP_HOTGLYPH;
+                 themeSize.stateId = GLPS_OPENED;
+-                const QSizeF size = themeSize.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget);
++                const QSizeF size = themeSize.size();
+                 decoration_size = qRound(qMax(size.width(), size.height()));
+             }
+             int mid_h = option->rect.x() + option->rect.width() / 2;
+@@ -1181,8 +1181,8 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption
+                 XPThemeData themeSize = theme;
+                 themeSize.partId = MENU_POPUPCHECK;
+                 themeSize.stateId = 0;
+-                const QSizeF size = themeSize.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget);
+-                const QMarginsF margins = themeSize.margins() * QWindowsStylePrivate::nativeMetricScaleFactor(widget);
++                const QSizeF size = themeSize.size();
++                const QMarginsF margins = themeSize.margins();
+                 checkcol = qMax(menuitem->maxIconWidth, qRound(gutterWidth + size.width() + margins.left() + margins.right()));
+             }
+             QRect rect = option->rect;
+@@ -1207,7 +1207,7 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption
+ 
+             if (menuitem->menuItemType == QStyleOptionMenuItem::Separator) {
+                 int yoff = y-2 + h / 2;
+-                const int separatorSize = qRound(qreal(6) * QWindowsStylePrivate::nativeMetricScaleFactor(widget));
++                const int separatorSize = qRound(qreal(6) * factor);
+                 QPoint p1 = QPoint(x + checkcol, yoff);
+                 QPoint p2 = QPoint(x + w + separatorSize, yoff);
+                 stateId = MBI_HOT;
+@@ -1240,8 +1240,8 @@ void QWindowsVistaStyle::drawControl(ControlElement element, const QStyleOption
+                 XPThemeData themeSize = theme;
+                 themeSize.partId = MENU_POPUPCHECK;
+                 themeSize.stateId = 0;
+-                const QSizeF size = themeSize.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget);
+-                const QMarginsF margins = themeSize.margins() * QWindowsStylePrivate::nativeMetricScaleFactor(widget);
++                const QSizeF size = themeSize.size();
++                const QMarginsF margins = themeSize.margins();
+                 QRect checkRect(0, 0, qRound(size.width() + margins.left() + margins.right()),
+                                 qRound(size.height() + margins.bottom() + margins.top()));
+                 checkRect.moveCenter(vCheckRect.center());
+@@ -1863,8 +1863,8 @@ QSize QWindowsVistaStyle::sizeFromContents(ContentsType type, const QStyleOption
+             XPThemeData themeSize = theme;
+             themeSize.partId = MENU_POPUPCHECK;
+             themeSize.stateId = 0;
+-            const QSizeF size = themeSize.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget);
+-            const QMarginsF margins = themeSize.margins() * QWindowsStylePrivate::nativeMetricScaleFactor(widget);
++            const QSizeF size = themeSize.size();
++            const QMarginsF margins = themeSize.margins();
+             minimumHeight = qMax(qRound(size.height() + margins.bottom() + margins.top()), sz.height());
+             sz.rwidth() += qRound(size.width() + margins.left() + margins.right());
+         }
+@@ -1965,7 +1965,7 @@ QRect QWindowsVistaStyle::subElementRect(SubElement element, const QStyleOption
+             int arrowWidth = 13;
+             int arrowHeight = 5;
+             if (theme.isValid()) {
+-                const QSizeF size = theme.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget);
++                const QSizeF size = theme.size();
+                 if (!size.isEmpty()) {
+                     arrowWidth = qRound(size.width());
+                     arrowHeight = qRound(size.height());
+diff --git a/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp b/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp
+index 5011b7cb7bed7d621408eed2161808916d51bd0d..210e83089980dfcf79d1cb89cd4ac091a1bc53ac 100644
+--- a/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp
++++ b/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle.cpp
+@@ -184,7 +184,7 @@ HRGN XPThemeData::mask(QWidget *widget)
+ // QWindowsXPStylePrivate -------------------------------------------------------------------------
+ // Static initializations
+ HWND QWindowsXPStylePrivate::m_vistaTreeViewHelper = nullptr;
+-HTHEME QWindowsXPStylePrivate::m_themes[NThemes];
++QHash<uint, HTHEME> QWindowsXPStylePrivate::m_themes[NThemes];
+ bool QWindowsXPStylePrivate::use_xp = false;
+ QBasicAtomicInt QWindowsXPStylePrivate::ref = Q_BASIC_ATOMIC_INITIALIZER(-1); // -1 based refcounting
+ 
+@@ -239,7 +239,6 @@ void QWindowsXPStylePrivate::init(bool force)
+         ref.ref();
+ 
+     useXP(true);
+-    std::fill(m_themes, m_themes + NThemes, nullptr);
+ }
+ 
+ /* \internal
+@@ -321,11 +320,13 @@ void QWindowsXPStylePrivate::cleanupVistaTreeViewTheming()
+ */
+ void QWindowsXPStylePrivate::cleanupHandleMap()
+ {
+-    for (auto &theme : m_themes) {
+-        if (theme) {
+-            CloseThemeData(theme);
+-            theme = nullptr;
++    for (auto &hash : m_themes) {
++        auto i = hash.constBegin();
++        while (i != hash.constEnd()) {
++            CloseThemeData(i.value());
++            ++i;
+         }
++        hash.clear();
+     }
+     QWindowsXPStylePrivate::cleanupVistaTreeViewTheming();
+ }
+@@ -336,16 +337,18 @@ HTHEME QWindowsXPStylePrivate::createTheme(int theme, HWND hwnd)
+         qWarning("Invalid parameters #%d, %p", theme, hwnd);
+         return nullptr;
+     }
+-    if (!m_themes[theme]) {
++    const uint dpi = GetDpiForWindow(hwnd);
++    if (!m_themes[theme].contains(dpi)) {
+         const wchar_t *name = themeNames[theme];
+         if (theme == VistaTreeViewTheme && QWindowsXPStylePrivate::initVistaTreeViewTheming())
+             hwnd = QWindowsXPStylePrivate::m_vistaTreeViewHelper;
+-        m_themes[theme] = OpenThemeData(hwnd, name);
+-        if (Q_UNLIKELY(!m_themes[theme]))
++        const HTHEME htheme = OpenThemeData(hwnd, name);
++        m_themes[theme].insert(dpi, htheme);
++        if (Q_UNLIKELY(!htheme))
+             qErrnoWarning("OpenThemeData() failed for theme %d (%s).",
+                           theme, qPrintable(themeName(theme)));
+     }
+-    return m_themes[theme];
++    return m_themes[theme].value(dpi);
+ }
+ 
+ QString QWindowsXPStylePrivate::themeName(int theme)
+@@ -495,8 +498,7 @@ bool QWindowsXPStylePrivate::isTransparent(XPThemeData &themeData)
+ QRegion QWindowsXPStylePrivate::region(XPThemeData &themeData)
+ {
+     HRGN hRgn = nullptr;
+-    const qreal factor = QWindowsStylePrivate::nativeMetricScaleFactor(themeData.widget);
+-    RECT rect = themeData.toRECT(QRect(themeData.rect.topLeft() / factor, themeData.rect.size() / factor));
++    RECT rect = themeData.toRECT(QRect(themeData.rect.topLeft(), themeData.rect.size()));
+     if (!SUCCEEDED(GetThemeBackgroundRegion(themeData.handle(), bufferHDC(), themeData.partId,
+                                             themeData.stateId, &rect, &hRgn))) {
+         return QRegion();
+@@ -525,7 +527,7 @@ QRegion QWindowsXPStylePrivate::region(XPThemeData &themeData)
+         RECT *r = reinterpret_cast<RECT*>(rd->Buffer);
+         for (uint i = 0; i < rd->rdh.nCount; ++i) {
+             QRect rect;
+-            rect.setCoords(int(r->left * factor), int(r->top * factor), int((r->right - 1) * factor), int((r->bottom - 1) * factor));
++            rect.setCoords(r->left, r->top, r->right - 1, r->bottom - 1);
+             ++r;
+             region |= rect;
+         }
+@@ -1780,8 +1782,8 @@ void QWindowsXPStyle::drawControl(ControlElement element, const QStyleOption *op
+         {
+             themeNumber = QWindowsXPStylePrivate::StatusTheme;
+             partId = SP_GRIPPER;
+-            XPThemeData theme(nullptr, p, themeNumber, partId);
+-            QSize size = (theme.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget)).toSize();
++            XPThemeData theme(widget, p, themeNumber, partId);
++            QSize size = theme.size().toSize();
+             size.rheight()--;
+             if (const QStyleOptionSizeGrip *sg = qstyleoption_cast<const QStyleOptionSizeGrip *>(option)) {
+                 switch (sg->corner) {
+@@ -2257,11 +2259,10 @@ void QWindowsXPStyle::drawControl(ControlElement element, const QStyleOption *op
+ QRect QWindowsXPStylePrivate::scrollBarGripperBounds(QStyle::State flags, const QWidget *widget, XPThemeData *theme)
+ {
+     const bool horizontal = flags & QStyle::State_Horizontal;
+-    const qreal factor = QWindowsStylePrivate::nativeMetricScaleFactor(widget);
+     const QMargins contentsMargin =
+-        (theme->margins(theme->rect, TMT_SIZINGMARGINS) * factor).toMargins();
++        theme->margins(theme->rect, TMT_SIZINGMARGINS).toMargins();
+     theme->partId = horizontal ? SBP_GRIPPERHORZ : SBP_GRIPPERVERT;
+-    const QSize size = (theme->size() * factor).toSize();
++    const QSize size = theme->size().toSize();
+ 
+     const int hSpace = theme->rect.width() - size.width();
+     const int vSpace = theme->rect.height() - size.height();
+@@ -2783,7 +2784,7 @@ int QWindowsXPStyle::pixelMetric(PixelMetric pm, const QStyleOption *option, con
+ 
+     int res = QWindowsXPStylePrivate::pixelMetricFromSystemDp(pm, option, widget);
+     if (res != QWindowsStylePrivate::InvalidMetric)
+-        return qRound(qreal(res) * QWindowsStylePrivate::nativeMetricScaleFactor(widget));
++        return res;
+ 
+     res = 0;
+     switch (pm) {
+@@ -3136,7 +3137,7 @@ QSize QWindowsXPStyle::sizeFromContents(ContentsType ct, const QStyleOption *opt
+             XPThemeData buttontheme(widget, nullptr, QWindowsXPStylePrivate::ButtonTheme, BP_PUSHBUTTON, PBS_NORMAL);
+             if (buttontheme.isValid()) {
+                 const qreal factor = QWindowsXPStylePrivate::nativeMetricScaleFactor(widget);
+-                const QMarginsF borderSize = buttontheme.margins() * factor;
++                const QMarginsF borderSize = buttontheme.margins();
+                 if (!borderSize.isNull()) {
+                     const qreal margin = qreal(2) * factor;
+                     sz.rwidth() += qRound(borderSize.left() + borderSize.right() - margin);
+@@ -3300,7 +3301,7 @@ QPixmap QWindowsXPStyle::standardPixmap(StandardPixmap standardPixmap, const QSt
+             if (widget && widget->isWindow()) {
+                 XPThemeData theme(widget, nullptr, QWindowsXPStylePrivate::WindowTheme, WP_SMALLCLOSEBUTTON, CBS_NORMAL);
+                 if (theme.isValid()) {
+-                    const QSize size = (theme.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget)).toSize();
++                    const QSize size = theme.size().toSize();
+                     return QIcon(QWindowsStyle::standardPixmap(standardPixmap, option, widget)).pixmap(size);
+                 }
+             }
+@@ -3329,12 +3330,12 @@ QIcon QWindowsXPStyle::standardIcon(StandardPixmap standardIcon,
+         if (qstyleoption_cast<const QStyleOptionDockWidget *>(option))
+         {
+             if (d->dockFloat.isNull()) {
+-                XPThemeData themeSize(nullptr, nullptr, QWindowsXPStylePrivate::WindowTheme,
++                XPThemeData themeSize(widget, nullptr, QWindowsXPStylePrivate::WindowTheme,
+                                       WP_SMALLCLOSEBUTTON, CBS_NORMAL);
+-                XPThemeData theme(nullptr, nullptr, QWindowsXPStylePrivate::WindowTheme,
++                XPThemeData theme(widget, nullptr, QWindowsXPStylePrivate::WindowTheme,
+                                   WP_MAXBUTTON, MAXBS_NORMAL);
+                 if (theme.isValid()) {
+-                    const QSize size = (themeSize.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget)).toSize();
++                    const QSize size = themeSize.size().toSize();
+                     QPixmap pm(size);
+                     pm.fill(Qt::transparent);
+                     QPainter p(&pm);
+@@ -3365,10 +3366,10 @@ QIcon QWindowsXPStyle::standardIcon(StandardPixmap standardIcon,
+         if (qstyleoption_cast<const QStyleOptionDockWidget *>(option))
+         {
+             if (d->dockClose.isNull()) {
+-                XPThemeData theme(nullptr, nullptr, QWindowsXPStylePrivate::WindowTheme,
++                XPThemeData theme(widget, nullptr, QWindowsXPStylePrivate::WindowTheme,
+                                   WP_SMALLCLOSEBUTTON, CBS_NORMAL);
+                 if (theme.isValid()) {
+-                    const QSize size = (theme.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget)).toSize();
++                    const QSize size = theme.size().toSize();
+                     QPixmap pm(size);
+                     pm.fill(Qt::transparent);
+                     QPainter p(&pm);
+@@ -3399,12 +3400,12 @@ QIcon QWindowsXPStyle::standardIcon(StandardPixmap standardIcon,
+         if (qstyleoption_cast<const QStyleOptionDockWidget *>(option))
+         {
+             if (d->dockFloat.isNull()) {
+-                XPThemeData themeSize(nullptr, nullptr, QWindowsXPStylePrivate::WindowTheme,
++                XPThemeData themeSize(widget, nullptr, QWindowsXPStylePrivate::WindowTheme,
+                                       WP_SMALLCLOSEBUTTON, CBS_NORMAL);
+-                XPThemeData theme(nullptr, nullptr, QWindowsXPStylePrivate::WindowTheme,
++                XPThemeData theme(widget, nullptr, QWindowsXPStylePrivate::WindowTheme,
+                                   WP_RESTOREBUTTON, RBS_NORMAL);
+                 if (theme.isValid()) {
+-                    const QSize size = (themeSize.size() * QWindowsStylePrivate::nativeMetricScaleFactor(widget)).toSize();
++                    const QSize size = themeSize.size().toSize();
+                     QPixmap pm(size);
+                     pm.fill(Qt::transparent);
+                     QPainter p(&pm);
+diff --git a/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h b/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h
+index 06a5ee80c9a0e7477cf1c44770fd2195c0e0cef0..7d9f0d9c21d0d12d00856ffe12ede614f5cae985 100644
+--- a/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h
++++ b/qtbase/src/plugins/styles/windowsvista/qwindowsxpstyle_p_p.h
+@@ -256,7 +256,6 @@ public:
+ 
+     static HTHEME createTheme(int theme, HWND hwnd);
+     static QString themeName(int theme);
+-    static inline bool hasTheme(int theme) { return theme >= 0 && theme < NThemes && m_themes[theme]; }
+     static bool isItemViewDelegateLineEdit(const QWidget *widget);
+     static bool isLineEditBaseColorSet(const QStyleOption *option, const QWidget *widget);
+ 
+@@ -283,7 +282,7 @@ private:
+     int bufferH = 0;
+ 
+     static HWND m_vistaTreeViewHelper;
+-    static HTHEME m_themes[NThemes];
++    static QHash<uint, HTHEME> m_themes[NThemes];
+ };
+ 
+ inline QSizeF XPThemeData::size()
