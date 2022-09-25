@@ -1,0 +1,289 @@
+diff --git a/qtmultimedia/src/multimedia/platform/windows/audio/qwindowsaudioutils.cpp b/qtmultimedia/src/multimedia/platform/windows/audio/qwindowsaudioutils.cpp
+index e8a3df596d35c21abe3eadbfe83b25646e3c476e..02e77ab97e6fa368bb52666b6d2ac4fdb9fc514a 100644
+--- a/qtmultimedia/src/multimedia/platform/windows/audio/qwindowsaudioutils.cpp
++++ b/qtmultimedia/src/multimedia/platform/windows/audio/qwindowsaudioutils.cpp
+@@ -38,6 +38,7 @@
+ ****************************************************************************/
+ 
+ #include "qwindowsaudioutils_p.h"
++#include "qwindowsmediafundation_p.h"
+ 
+ QT_BEGIN_NAMESPACE
+ 
+@@ -126,14 +127,14 @@ QAudioFormat QWindowsAudioUtils::mediaTypeToFormat(IMFMediaType *mediaType)
+     return format;
+ }
+ 
+-QWindowsIUPointer<IMFMediaType> QWindowsAudioUtils::formatToMediaType(const QAudioFormat &format)
++QWindowsIUPointer<IMFMediaType> QWindowsAudioUtils::formatToMediaType(QWindowsMediaFundation &wmf, const QAudioFormat &format)
+ {
+     QWindowsIUPointer<IMFMediaType> mediaType;
+ 
+     if (!format.isValid())
+         return mediaType;
+ 
+-    MFCreateMediaType(mediaType.address());
++    wmf.mfCreateMediaType(mediaType.address());
+ 
+     mediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+     if (format.sampleFormat() == QAudioFormat::Float) {
+diff --git a/qtmultimedia/src/multimedia/platform/windows/audio/qwindowsaudioutils_p.h b/qtmultimedia/src/multimedia/platform/windows/audio/qwindowsaudioutils_p.h
+index c28122c904a0aec50504e34ffc92aa0f87c0c449..d4bc3a7c4ffa4667af7ce6cb2077c27aabc5a7cb 100644
+--- a/qtmultimedia/src/multimedia/platform/windows/audio/qwindowsaudioutils_p.h
++++ b/qtmultimedia/src/multimedia/platform/windows/audio/qwindowsaudioutils_p.h
+@@ -59,6 +59,7 @@
+ #include <mmreg.h>
+ 
+ struct IMFMediaType;
++class QWindowsMediaFundation;
+ 
+ QT_BEGIN_NAMESPACE
+ 
+@@ -67,7 +68,7 @@ namespace QWindowsAudioUtils
+     bool formatToWaveFormatExtensible(const QAudioFormat &format, WAVEFORMATEXTENSIBLE &wfx);
+     QAudioFormat waveFormatExToFormat(const WAVEFORMATEX &in);
+     QAudioFormat mediaTypeToFormat(IMFMediaType *mediaType);
+-    QWindowsIUPointer<IMFMediaType> formatToMediaType(const QAudioFormat &format);
++    QWindowsIUPointer<IMFMediaType> formatToMediaType(QWindowsMediaFundation &, const QAudioFormat &format);
+ 
+ }
+ 
+diff --git a/qtmultimedia/src/multimedia/platform/windows/common/qwindowsresampler.cpp b/qtmultimedia/src/multimedia/platform/windows/common/qwindowsresampler.cpp
+index d0ec8a5489fc538bf51525a503c63070d728316d..6f9fe18c5f5970afa5f6519ef976fd7c24b4729f 100644
+--- a/qtmultimedia/src/multimedia/platform/windows/common/qwindowsresampler.cpp
++++ b/qtmultimedia/src/multimedia/platform/windows/common/qwindowsresampler.cpp
+@@ -40,6 +40,7 @@
+ #include "qwindowsresampler_p.h"
+ #include <private/qwindowsaudioutils_p.h>
+ #include <qloggingcategory.h>
++#include <QUuid>
+ 
+ #include <Wmcodecdsp.h>
+ #include <mftransform.h>
+@@ -48,12 +49,16 @@
+ 
+ QT_BEGIN_NAMESPACE
+ 
++QUuid qIID_IMFTransform(0xbf94c121, 0x5b05, 0x4e6f, 0x80,0x00, 0xba,0x59,0x89,0x61,0x41,0x4d);
++QUuid qCLSID_CResamplerMediaObject("f447b69e-1884-4a7e-8055-346f74d6edb3");
++
+ Q_LOGGING_CATEGORY(qLcAudioResampler, "qt.multimedia.audioresampler")
+ 
+ QWindowsResampler::QWindowsResampler()
++    : m_wmf(QWindowsMediaFundation::instance())
+ {
+-    CoCreateInstance(CLSID_CResamplerMediaObject, nullptr, CLSCTX_INPROC_SERVER,
+-                     IID_IMFTransform, (LPVOID*)(m_resampler.address()));
++    CoCreateInstance(qCLSID_CResamplerMediaObject, nullptr, CLSCTX_INPROC_SERVER,
++                     qIID_IMFTransform, (LPVOID*)(m_resampler.address()));
+     if (m_resampler)
+         m_resampler->AddInputStreams(1, &m_inputStreamID);
+ }
+@@ -79,12 +84,12 @@ quint64 QWindowsResampler::inputBufferSize(quint64 outputBufferSize) const
+ HRESULT QWindowsResampler::processInput(const QByteArrayView &in)
+ {
+     QWindowsIUPointer<IMFSample> sample;
+-    HRESULT hr = MFCreateSample(sample.address());
++    HRESULT hr = m_wmf->mfCreateSample(sample.address());
+     if (FAILED(hr))
+         return hr;
+ 
+     QWindowsIUPointer<IMFMediaBuffer> buffer;
+-    hr = MFCreateMemoryBuffer(in.size(), buffer.address());
++    hr = m_wmf->mfCreateMemoryBuffer(in.size(), buffer.address());
+     if (FAILED(hr))
+         return hr;
+ 
+@@ -118,12 +123,12 @@ HRESULT QWindowsResampler::processOutput(QByteArray &out)
+     QWindowsIUPointer<IMFMediaBuffer> buffer;
+ 
+     if (m_resamplerNeedsSampleBuffer) {
+-        HRESULT hr = MFCreateSample(sample.address());
++        HRESULT hr = m_wmf->mfCreateSample(sample.address());
+         if (FAILED(hr))
+             return hr;
+ 
+         auto expectedOutputSize = outputBufferSize(m_totalInputBytes) - m_totalOutputBytes;
+-        hr = MFCreateMemoryBuffer(expectedOutputSize, buffer.address());
++        hr = m_wmf->mfCreateMemoryBuffer(expectedOutputSize, buffer.address());
+         if (FAILED(hr))
+             return hr;
+ 
+@@ -237,10 +242,10 @@ bool QWindowsResampler::setup(const QAudioFormat &fin, const QAudioFormat &fout)
+         return true;
+     }
+ 
+-    Q_ASSERT(m_resampler);
++    Q_ASSERT(m_resampler && m_wmf);
+ 
+-    QWindowsIUPointer<IMFMediaType> min = QWindowsAudioUtils::formatToMediaType(fin);
+-    QWindowsIUPointer<IMFMediaType> mout = QWindowsAudioUtils::formatToMediaType(fout);
++    QWindowsIUPointer<IMFMediaType> min = QWindowsAudioUtils::formatToMediaType(*m_wmf, fin);
++    QWindowsIUPointer<IMFMediaType> mout = QWindowsAudioUtils::formatToMediaType(*m_wmf, fout);
+ 
+     HRESULT hr = m_resampler->SetInputType(m_inputStreamID, min.get(), 0);
+     if (FAILED(hr)) {
+diff --git a/qtmultimedia/src/multimedia/platform/windows/common/qwindowsresampler_p.h b/qtmultimedia/src/multimedia/platform/windows/common/qwindowsresampler_p.h
+index 367491f0fb0d97b3c2f9c9f60af8f939451d1888..77077b44eac97ade8a91485c7137f5d2244e7ddf 100644
+--- a/qtmultimedia/src/multimedia/platform/windows/common/qwindowsresampler_p.h
++++ b/qtmultimedia/src/multimedia/platform/windows/common/qwindowsresampler_p.h
+@@ -56,6 +56,7 @@
+ #include <qbytearrayview.h>
+ #include <qaudioformat.h>
+ #include <private/qwindowsiupointer_p.h>
++#include <private/qwindowsmediafundation_p.h>
+ #include <qt_windows.h>
+ 
+ struct IMFSample;
+@@ -88,6 +89,7 @@ private:
+     HRESULT processOutput(QByteArray &out);
+ 
+     QWindowsIUPointer<IMFTransform> m_resampler;
++    QWindowsMediaFundation *m_wmf = nullptr;
+ 
+     bool m_resamplerNeedsSampleBuffer = false;
+     quint64 m_totalInputBytes = 0;
+diff --git a/qtmultimedia/src/multimedia/platform/windows/qwindowsmediafundation.cpp b/qtmultimedia/src/multimedia/platform/windows/qwindowsmediafundation.cpp
+new file mode 100644
+index 0000000000..98769bea52
+--- /dev/null
++++ b/qtmultimedia/src/multimedia/platform/windows/qwindowsmediafundation.cpp
+@@ -0,0 +1,57 @@
++// Copyright (C) 2021 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#include "qwindowsmediafundation_p.h"
++#include "qwindowdefs_win.h"
++#include <QDebug>
++#include <QMutex>
++
++QT_BEGIN_NAMESPACE
++
++namespace {
++struct Holder {
++    ~Holder()
++    {
++        QMutexLocker locker(&mutex);
++        instance = nullptr;
++    }
++    bool loadFailed = false;
++    QBasicMutex mutex;
++    std::unique_ptr<QWindowsMediaFundation> instance;
++} holder;
++
++}
++
++QWindowsMediaFundation::~QWindowsMediaFundation() = default;
++
++template<typename T> bool setProcAddress(QSystemLibrary &lib, T &f, std::string_view name)
++{
++    f = reinterpret_cast<T>(lib.resolve(name.data()));
++    return bool(f);
++}
++
++QWindowsMediaFundation *QWindowsMediaFundation::instance()
++{
++    QMutexLocker locker(&holder.mutex);
++    if (holder.instance)
++        return holder.instance.get();
++
++    if (holder.loadFailed)
++        return nullptr;
++
++    std::unique_ptr<QWindowsMediaFundation> wmf(new QWindowsMediaFundation);
++    if (wmf->m_mfplat.load()) {
++        if (setProcAddress(wmf->m_mfplat, wmf->mfCreateMediaType, "MFCreateMediaType")
++            && setProcAddress(wmf->m_mfplat, wmf->mfCreateMemoryBuffer, "MFCreateMemoryBuffer")
++            && setProcAddress(wmf->m_mfplat, wmf->mfCreateSample, "MFCreateSample"))
++        {
++            holder.instance = std::move(wmf);
++            return holder.instance.get();
++        }
++    }
++
++    holder.loadFailed = true;
++    return nullptr;
++}
++
++QT_END_NAMESPACE
+diff --git a/qtmultimedia/src/multimedia/platform/windows/qwindowsmediafundation_p.h b/qtmultimedia/src/multimedia/platform/windows/qwindowsmediafundation_p.h
+new file mode 100644
+index 0000000000..572054c27a
+--- /dev/null
++++ b/qtmultimedia/src/multimedia/platform/windows/qwindowsmediafundation_p.h
+@@ -0,0 +1,37 @@
++// Copyright (C) 2021 The Qt Company Ltd.
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#ifndef QWINDOWSMEDIAFUNDATION_H
++#define QWINDOWSMEDIAFUNDATION_H
++
++#include <private/qtmultimediaglobal_p.h>
++#include <QtCore/qt_windows.h>
++#include <QtCore/private/qsystemlibrary_p.h>
++#include <QLibrary>
++#include <memory>
++#include <mfapi.h>
++
++struct IMFMediaType;
++
++QT_BEGIN_NAMESPACE
++
++class QWindowsMediaFundation
++{
++public:
++    ~QWindowsMediaFundation();
++
++    static QWindowsMediaFundation *instance();
++
++    decltype(&::MFCreateMediaType) mfCreateMediaType = nullptr;
++    decltype(&::MFCreateMemoryBuffer) mfCreateMemoryBuffer = nullptr;
++    decltype(&::MFCreateSample) mfCreateSample = nullptr;
++
++private:
++    QWindowsMediaFundation() : m_mfplat(QStringLiteral("Mfplat.dll")) {}
++
++    QSystemLibrary m_mfplat;
++};
++
++QT_END_NAMESPACE
++
++#endif // QWINDOWSMEDIAFUNDATION_H
+diff --git a/qtmultimedia/src/multimedia/CMakeLists.txt b/qtmultimedia/src/multimedia/CMakeLists.txt
+index 327ae137e3cf92a54878be5b06eab692a743a600..d75fb7445c37f867c37766edf59863b2c3bad6aa 100644
+--- a/qtmultimedia/src/multimedia/CMakeLists.txt
++++ b/qtmultimedia/src/multimedia/CMakeLists.txt
+@@ -164,6 +164,7 @@ qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_wmf
+         platform/windows/mediacapture/qwindowsmediaencoder.cpp
+         platform/windows/mediacapture/qwindowsmediaencoder_p.h
+         platform/windows/qwindowsmediadevices.cpp platform/windows/qwindowsmediadevices_p.h
++        platform/windows/qwindowsmediafundation.cpp platform/windows/qwindowsmediafundation_p.h
+         platform/windows/qwindowsformatinfo.cpp platform/windows/qwindowsformatinfo_p.h
+         platform/windows/qwindowsintegration.cpp platform/windows/qwindowsintegration_p.h
+         platform/windows/sourceresolver.cpp platform/windows/sourceresolver_p.h
+@@ -175,17 +176,11 @@ qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_wmf
+         platform/windows/mediacapture
+     LIBRARIES
+         uuid
+-        WMF::WMF
+         d3d9
+         dxva2
+         evr
+         gdi32
+         ksuser
+-        mf
+-        mfcore
+-        mfplat
+-        mfreadwrite
+-        mfuuid
+         ole32
+         oleaut32
+         propsys
+@@ -194,7 +189,6 @@ qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_wmf
+         amstrmid
+         user32
+         winmm
+-        wmcodecdspuuid
+ )
+ 
+ qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_gstreamer
