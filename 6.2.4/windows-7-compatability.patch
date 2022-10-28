@@ -1,3 +1,43 @@
+diff --git a/qtbase/cmake/QtInternalTargets.cmake b/qtbase/cmake/QtInternalTargets.cmake
+index 6456d5b250615b1d1fc360189d25ae9daa7c4a29..de2d40b97f49534639b5d8cb4fd17c26071c5973 100644
+--- a/qtbase/cmake/QtInternalTargets.cmake
++++ b/qtbase/cmake/QtInternalTargets.cmake
+@@ -286,8 +286,14 @@ if (MSVC)
+         $<$<NOT:$<CONFIG:Debug>>:-guard:cf>
+     )
+ 
++    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
++        set(YY_THUNKS_OBJ "${CMAKE_SOURCE_DIR}/YY-Thunks/x64/YY_Thunks_for_Vista.obj")
++    elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
++        set(YY_THUNKS_OBJ "${CMAKE_SOURCE_DIR}/YY-Thunks/x86/YY_Thunks_for_Vista.obj")
++    endif()
+     target_link_options(PlatformCommonInternal INTERFACE
+         -DYNAMICBASE -NXCOMPAT
++        "${YY_THUNKS_OBJ}"
+         $<$<NOT:$<CONFIG:Debug>>:-OPT:REF -OPT:ICF -GUARD:CF>
+     )
+ endif()
+diff --git a/qtbase/src/gui/rhi/qrhid3d11.cpp b/qtbase/src/gui/rhi/qrhid3d11.cpp
+index 283be47cb3414cf3c0acd4fa6cc5910a8ee512d0..b3297e75ac02d223148cc4d5a3c05702d153afa5 100644
+--- a/qtbase/src/gui/rhi/qrhid3d11.cpp
++++ b/qtbase/src/gui/rhi/qrhid3d11.cpp
+@@ -169,6 +169,8 @@ inline Int aligned(Int v, Int byteAlign)
+ 
+ static IDXGIFactory1 *createDXGIFactory2()
+ {
++    return nullptr;
++/*
+     IDXGIFactory1 *result = nullptr;
+     const HRESULT hr = CreateDXGIFactory2(0, IID_IDXGIFactory2, reinterpret_cast<void **>(&result));
+     if (FAILED(hr)) {
+@@ -176,6 +178,7 @@ static IDXGIFactory1 *createDXGIFactory2()
+         result = nullptr;
+     }
+     return result;
++*/
+ }
+ 
+ static IDXGIFactory1 *createDXGIFactory1()
 diff --git a/YY-Thunks/x64/YY_Thunks_for_Vista.obj b/YY-Thunks/x64/YY_Thunks_for_Vista.obj
 new file mode 100644
 index 0000000000000000000000000000000000000000..b7cd3396496cee3c0a3ec2128ee1d91eb9b19da7
@@ -6347,43 +6387,3 @@ Phh|=G4^5hjb20z_UuWUM
 literal 0
 HcmV?d00001
 
-diff --git a/qtbase/cmake/QtInternalTargets.cmake b/qtbase/cmake/QtInternalTargets.cmake
-index 6456d5b250615b1d1fc360189d25ae9daa7c4a29..8b2cec28f8bb4b15b2638f7d62d6d4f39fb6880f 100644
---- a/qtbase/cmake/QtInternalTargets.cmake
-+++ b/qtbase/cmake/QtInternalTargets.cmake
-@@ -286,8 +286,14 @@ if (MSVC)
-         $<$<NOT:$<CONFIG:Debug>>:-guard:cf>
-     )
- 
-+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-+        set(YY_THUNKS_OBJ "${CMAKE_SOURCE_DIR}/YY-Thunks/x64/YY_Thunks_for_Vista.obj")
-+    elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
-+        set(YY_THUNKS_OBJ "${CMAKE_SOURCE_DIR}/YY-Thunks/x86/YY_Thunks_for_Vista.obj")
-+    endif()
-     target_link_options(PlatformCommonInternal INTERFACE
-         -DYNAMICBASE -NXCOMPAT
-+        "${YY_THUNKS_OBJ}"
-         $<$<NOT:$<CONFIG:Debug>>:-OPT:REF -OPT:ICF -GUARD:CF>
-     )
- endif()
-diff --git a/qtbase/src/gui/rhi/qrhid3d11.cpp b/qtbase/src/gui/rhi/qrhid3d11.cpp
-index 283be47cb3414cf3c0acd4fa6cc5910a8ee512d0..09aec084ca0c6d212cf95a4a6f7083415de7bf88 100644
---- a/qtbase/src/gui/rhi/qrhid3d11.cpp
-+++ b/qtbase/src/gui/rhi/qrhid3d11.cpp
-@@ -169,6 +169,8 @@ inline Int aligned(Int v, Int byteAlign)
- 
- static IDXGIFactory1 *createDXGIFactory2()
- {
-+    return nullptr;
-+/*
-     IDXGIFactory1 *result = nullptr;
-     const HRESULT hr = CreateDXGIFactory2(0, IID_IDXGIFactory2, reinterpret_cast<void **>(&result));
-     if (FAILED(hr)) {
-@@ -176,6 +178,7 @@ static IDXGIFactory1 *createDXGIFactory2()
-         result = nullptr;
-     }
-     return result;
-+*/
- }
- 
- static IDXGIFactory1 *createDXGIFactory1()
