@@ -41,8 +41,6 @@ index 283be47cb3414cf3c0acd4fa6cc5910a8ee512d0..b3297e75ac02d223148cc4d5a3c05702
 diff --git a/YY-Thunks/x64/YY_Thunks_for_Vista.obj b/YY-Thunks/x64/YY_Thunks_for_Vista.obj
 new file mode 100644
 index 0000000000000000000000000000000000000000..b7cd3396496cee3c0a3ec2128ee1d91eb9b19da7
---- /dev/null
-+++ b/YY-Thunks/x64/YY_Thunks_for_Vista.obj
 GIT binary patch
 literal 510559
 zcmeFacYGAp_y0d60YWGADxpg!2_->9HrY+GvdJ#lgiypKK!8X{FbP$psvrs?sGxwL
@@ -3302,8 +3300,6 @@ HcmV?d00001
 diff --git a/YY-Thunks/x86/YY_Thunks_for_Vista.obj b/YY-Thunks/x86/YY_Thunks_for_Vista.obj
 new file mode 100644
 index 0000000000000000000000000000000000000000..e662dce819d17c6d8c36f3eaa275c31284d43bfe
---- /dev/null
-+++ b/YY-Thunks/x86/YY_Thunks_for_Vista.obj
 GIT binary patch
 literal 485982
 zcmeFacYGAp_y0f11_+(dI{`v(=^@l?b~nkAO?KJc5F+qiLJ}Yll8{1Gib(IE(gj4C
