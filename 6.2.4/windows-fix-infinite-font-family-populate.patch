@@ -1,0 +1,100 @@
+diff --git forkSrcPrefix/qtbase/src/gui/text/windows/qwindowsfontdatabase.cpp forkDstPrefix/qtbase/src/gui/text/windows/qwindowsfontdatabase.cpp
+index 12f0cd3d965ef065073710766b4dbdc8b9089ef4..4955466c9666819cc602c5d83688209292723f92 100644
+--- forkSrcPrefix/qtbase/src/gui/text/windows/qwindowsfontdatabase.cpp
++++ forkDstPrefix/qtbase/src/gui/text/windows/qwindowsfontdatabase.cpp
+@@ -490,17 +490,44 @@ static QChar *createFontFile(const QString &faceName)
+     return faceNamePtr;
+ }
+ 
++static int QT_WIN_CALLBACK storeFont(const LOGFONT *logFont, const TEXTMETRIC *textmetric,
++                                     DWORD type, LPARAM lparam);
++
+ namespace {
+     struct StoreFontPayload {
+-        StoreFontPayload(const QString &family,
+-                         QWindowsFontDatabase *fontDatabase)
+-            : populatedFontFamily(family)
+-            , windowsFontDatabase(fontDatabase)
+-        {}
++        StoreFontPayload(const QString &familyName)
++        {
++            populatedFontFamilies.insert(familyName);
++        }
++
++        void populateFamily(const QString &familyName)
++        {
++            qCDebug(lcQpaFonts) << familyName;
++            if (familyName.size() >= LF_FACESIZE) { // Field length of LOGFONT::lfFaceName
++                qCDebug(lcQpaFonts) << "Unable to enumerate family '" << familyName << '\'';
++                return;
++            }
++
++            // Prevent infinite font family population: https://bugreports.qt.io/browse/QTBUG-99170
++            populatedFontFamilies.insert(familyName);
++
++            HDC dummy = GetDC(0);
++            LOGFONT lf;
++            lf.lfCharSet = DEFAULT_CHARSET;
++            familyName.toWCharArray(lf.lfFaceName);
++            lf.lfFaceName[familyName.size()] = 0;
++            lf.lfPitchAndFamily = 0;
++            EnumFontFamiliesEx(dummy, &lf, storeFont, reinterpret_cast<intptr_t>(this), 0);
++            ReleaseDC(0, dummy);
++        }
+ 
+-        QString populatedFontFamily;
++        bool isFamilyPopulated(const QString &familyName)
++        {
++            return populatedFontFamilies.contains(familyName);
++        }
++
++        QSet<QString> populatedFontFamilies;
+         QSet<FontAndStyle> foundFontAndStyles;
+-        QWindowsFontDatabase *windowsFontDatabase;
+     };
+ }
+ 
+@@ -595,9 +622,9 @@ static bool addFontToDatabase(QString familyName,
+     // mark it as such inside registerFont()
+     if (!subFamilyName.isEmpty()
+             && familyName != subFamilyName
+-            && sfp->populatedFontFamily != familyName
++            && !sfp->isFamilyPopulated(familyName)
+             && !QPlatformFontDatabase::isFamilyPopulated(familyName)) {
+-        sfp->windowsFontDatabase->populateFamily(familyName);
++        sfp->populateFamily(familyName);
+     }
+ 
+     QPlatformFontDatabase::registerFont(familyName, styleName, foundryName, weight,
+@@ -670,20 +697,8 @@ bool QWindowsFontDatabase::populateFamilyAliases(const QString &missingFamily)
+ 
+ void QWindowsFontDatabase::populateFamily(const QString &familyName)
+ {
+-    qCDebug(lcQpaFonts) << familyName;
+-    if (familyName.size() >= LF_FACESIZE) { // Field length of LOGFONT::lfFaceName
+-        qCDebug(lcQpaFonts) << "Unable to enumerate family '" << familyName << '\'';
+-        return;
+-    }
+-    HDC dummy = GetDC(0);
+-    LOGFONT lf;
+-    lf.lfCharSet = DEFAULT_CHARSET;
+-    familyName.toWCharArray(lf.lfFaceName);
+-    lf.lfFaceName[familyName.size()] = 0;
+-    lf.lfPitchAndFamily = 0;
+-    StoreFontPayload sfp(familyName, this);
+-    EnumFontFamiliesEx(dummy, &lf, storeFont, reinterpret_cast<intptr_t>(&sfp), 0);
+-    ReleaseDC(0, dummy);
++    StoreFontPayload sfp(familyName);
++    sfp.populateFamily(familyName);
+ }
+ 
+ static int QT_WIN_CALLBACK populateFontFamilies(const LOGFONT *logFont, const TEXTMETRIC *textmetric,
+@@ -1022,7 +1037,7 @@ QStringList QWindowsFontDatabase::addApplicationFont(const QByteArray &fontData,
+             TEXTMETRIC textMetrics;
+             GetTextMetrics(hdc, &textMetrics);
+ 
+-            StoreFontPayload sfp(familyName, this);
++            StoreFontPayload sfp(familyName);
+             addFontToDatabase(familyName, styleName, lf, &textMetrics, &signatures.at(j),
+                               TRUETYPE_FONTTYPE, &sfp);
+ 

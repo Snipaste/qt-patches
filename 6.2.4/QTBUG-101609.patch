@@ -1,0 +1,19 @@
+diff --git forkSrcPrefix/qtbase/src/gui/text/windows/qwindowsfontdatabase.cpp forkDstPrefix/qtbase/src/gui/text/windows/qwindowsfontdatabase.cpp
+index 12f0cd3d965ef065073710766b4dbdc8b9089ef4..c6a7c9f3226afe5bdb75aea98e0c53368c659094 100644
+--- forkSrcPrefix/qtbase/src/gui/text/windows/qwindowsfontdatabase.cpp
++++ forkDstPrefix/qtbase/src/gui/text/windows/qwindowsfontdatabase.cpp
+@@ -562,7 +562,13 @@ static bool addFontToDatabase(QString familyName,
+         subFamilyStyle = styleName;
+         faceName = familyName; // Remember the original name for later lookups
+         familyName = canonicalNames.preferredName;
+-        styleName = canonicalNames.preferredStyle;
++        // Preferred style / typographic subfamily name:
++        // "If it is absent, then name ID 2 is considered to be the typographic subfamily name."
++        // From: https://docs.microsoft.com/en-us/windows/win32/directwrite/opentype-variable-fonts
++        // Name ID 2 is already stored in the styleName variable. Furthermore, for variable fonts,
++        // styleName holds the variation instance name, which should be used over name ID 2.
++        if (!canonicalNames.preferredStyle.isEmpty())
++            styleName = canonicalNames.preferredStyle;
+     }
+ 
+     QSupportedWritingSystems writingSystems;
