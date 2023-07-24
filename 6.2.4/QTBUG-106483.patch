@@ -1,0 +1,18 @@
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+index 4ea786667681c35e99c3f742addf918607acb01a..8923f22ea5d0565f6832ff8864af72c049f62f24 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+@@ -2046,10 +2046,10 @@ void QWindowsWindow::checkForScreenChanged(ScreenChangeMode mode)
+         return;
+     // For screens with different DPI: postpone until WM_DPICHANGE
+     // Check on currentScreen as it can be 0 when resuming a session (QTBUG-80436).
+-    if (mode == FromGeometryChange && currentScreen != nullptr
+-        && !equalDpi(currentScreen->logicalDpi(), newScreen->logicalDpi())) {
++    const bool changingDpi = !equalDpi(QDpi(savedDpi(), savedDpi()), newScreen->logicalDpi());
++    if (mode == FromGeometryChange && currentScreen != nullptr && changingDpi)
+         return;
+-    }
++
+     qCDebug(lcQpaWindows).noquote().nospace() << __FUNCTION__
+         << ' ' << window() << " \"" << (currentScreen ? currentScreen->name() : QString())
+         << "\"->\"" << newScreen->name() << '"';

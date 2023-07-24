@@ -1,0 +1,18 @@
+diff --git forkSrcPrefix/qtbase/src/gui/kernel/qscreen.cpp forkDstPrefix/qtbase/src/gui/kernel/qscreen.cpp
+index b1c2018c78981ad4647ca6dabece4913405f8ef2..ceeb08535384274102dcc6c80e196946b6ff5c48 100644
+--- forkSrcPrefix/qtbase/src/gui/kernel/qscreen.cpp
++++ forkDstPrefix/qtbase/src/gui/kernel/qscreen.cpp
+@@ -450,8 +450,11 @@ QList<QScreen *> QScreen::virtualSiblings() const
+     const QList<QPlatformScreen *> platformScreens = d->platformScreen->virtualSiblings();
+     QList<QScreen *> screens;
+     screens.reserve(platformScreens.count());
+-    for (QPlatformScreen *platformScreen : platformScreens)
+-        screens << platformScreen->screen();
++    for (QPlatformScreen *platformScreen : platformScreens) {
++        // Only consider platform screens that have been added
++        if (auto *knownScreen = platformScreen->screen())
++            screens << knownScreen;
++    }
+     return screens;
+ }
+ 

@@ -1,0 +1,12 @@
+diff --git forkSrcPrefix/qtbase/src/corelib/thread/qfutureinterface.cpp forkDstPrefix/qtbase/src/corelib/thread/qfutureinterface.cpp
+index f1a0a0626241924268f5ff480d423f133055a2ea..9b1a8796e5337db7a91d712fb0bc12bf7599bac6 100644
+--- forkSrcPrefix/qtbase/src/corelib/thread/qfutureinterface.cpp
++++ forkDstPrefix/qtbase/src/corelib/thread/qfutureinterface.cpp
+@@ -602,7 +602,6 @@ void QFutureInterfaceBase::reset()
+     d->m_progressValue = 0;
+     d->m_progressMinimum = 0;
+     d->m_progressMaximum = 0;
+-    d->setState(QFutureInterfaceBase::NoState);
+     d->progressTime.invalidate();
+     d->isValid = false;
+ }

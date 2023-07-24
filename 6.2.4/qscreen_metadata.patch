@@ -1,0 +1,398 @@
+diff --git forkSrcPrefix/qtbase/src/gui/CMakeLists.txt forkDstPrefix/qtbase/src/gui/CMakeLists.txt
+index 2c471dac34bd1b27ed59e104601ab894c709e20f..e332abb6f2f6d3e7692175941ec82c2621626156 100644
+--- forkSrcPrefix/qtbase/src/gui/CMakeLists.txt
++++ forkDstPrefix/qtbase/src/gui/CMakeLists.txt
+@@ -1030,7 +1030,7 @@ qt_internal_extend_target(Gui # special case CONDITION NOT GCC OR NOT QT_COMPILE
+         "painting/qdrawhelper.cpp"
+ )
+ 
+-qt_internal_extend_target(Gui CONDITION (QT_FEATURE_eglfs OR QT_FEATURE_xcb)
++qt_internal_extend_target(Gui CONDITION (QT_FEATURE_eglfs OR QT_FEATURE_xcb OR QT_FEATURE_direct2d OR WIN32)
+     SOURCES
+         util/qedidparser.cpp util/qedidparser_p.h
+         util/qedidvendortable_p.h
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/direct2d/CMakeLists.txt forkDstPrefix/qtbase/src/plugins/platforms/direct2d/CMakeLists.txt
+index 7f2036ca2a9b5fccf11cec965a2a6a415377ab38..eac7e292aa61be06d6044dad6c65a2a58cc7bc3b 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/direct2d/CMakeLists.txt
++++ forkDstPrefix/qtbase/src/plugins/platforms/direct2d/CMakeLists.txt
+@@ -65,6 +65,7 @@ qt_internal_add_plugin(QWindowsDirect2DIntegrationPlugin
+         imm32
+         ole32
+         oleaut32
++        setupapi
+         shell32
+         shlwapi
+         user32
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/CMakeLists.txt forkDstPrefix/qtbase/src/plugins/platforms/windows/CMakeLists.txt
+index 3efde8cf5315cfae624df64603da7112635f43d4..0ca048695548ee6af8df091d485df8ea9ae528c5 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/CMakeLists.txt
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/CMakeLists.txt
+@@ -53,6 +53,7 @@ qt_internal_add_plugin(QWindowsIntegrationPlugin
+         imm32
+         ole32
+         oleaut32
++        setupapi
+         shell32
+         shlwapi
+         user32
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
+index 22be39bd921e9d591e172cd1537fa7c441c4ef6c..e31cab1b4a7c81bc60ad38f2a236b5a909748c3f 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
+@@ -50,12 +50,20 @@
+ #include <QtGui/qpixmap.h>
+ #include <QtGui/qguiapplication.h>
+ #include <qpa/qwindowsysteminterface.h>
++#include <QtCore/private/qsystemerror_p.h>
++#include <QtGui/private/qedidparser_p.h>
+ #include <private/qhighdpiscaling_p.h>
+ #include <private/qwindowsfontdatabasebase_p.h>
+ #include <QtGui/qscreen.h>
+ 
+ #include <QtCore/qdebug.h>
+ 
++#include <memory>
++#include <type_traits>
++
++#include <cfgmgr32.h>
++#include <setupapi.h>
++
+ QT_BEGIN_NAMESPACE
+ 
+ static inline QDpi deviceDPI(HDC hdc)
+@@ -74,7 +82,7 @@ static inline QDpi monitorDPI(HMONITOR hMonitor)
+     return {0, 0};
+ }
+ 
+-static bool getPathInfo(const MONITORINFOEX &viewInfo, DISPLAYCONFIG_PATH_INFO *pathInfo)
++static std::vector<DISPLAYCONFIG_PATH_INFO> getPathInfo(const MONITORINFOEX &viewInfo)
+ {
+     // We might want to consider storing adapterId/id from DISPLAYCONFIG_PATH_TARGET_INFO.
+     std::vector<DISPLAYCONFIG_PATH_INFO> pathInfos;
+@@ -90,7 +98,7 @@ static bool getPathInfo(const MONITORINFOEX &viewInfo, DISPLAYCONFIG_PATH_INFO *
+         // look up the needed buffer sizes.
+         if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &numPathArrayElements,
+                                         &numModeInfoArrayElements) != ERROR_SUCCESS) {
+-            return false;
++            return {};
+         }
+         pathInfos.resize(numPathArrayElements);
+         modeInfos.resize(numModeInfoArrayElements);
+@@ -99,24 +107,25 @@ static bool getPathInfo(const MONITORINFOEX &viewInfo, DISPLAYCONFIG_PATH_INFO *
+     } while (result == ERROR_INSUFFICIENT_BUFFER);
+ 
+     if (result != ERROR_SUCCESS)
+-        return false;
+-
+-    // Find path matching monitor name
+-    for (uint32_t p = 0; p < numPathArrayElements; p++) {
+-        DISPLAYCONFIG_SOURCE_DEVICE_NAME deviceName;
+-        deviceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
+-        deviceName.header.size = sizeof(DISPLAYCONFIG_SOURCE_DEVICE_NAME);
+-        deviceName.header.adapterId = pathInfos[p].sourceInfo.adapterId;
+-        deviceName.header.id = pathInfos[p].sourceInfo.id;
+-        if (DisplayConfigGetDeviceInfo(&deviceName.header) == ERROR_SUCCESS) {
+-            if (wcscmp(viewInfo.szDevice, deviceName.viewGdiDeviceName) == 0) {
+-                *pathInfo = pathInfos[p];
++        return {};
++
++    // Find paths matching monitor name
++    auto discardThese =
++            std::remove_if(pathInfos.begin(), pathInfos.end(), [&](const auto &path) -> bool {
++                DISPLAYCONFIG_SOURCE_DEVICE_NAME deviceName;
++                deviceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
++                deviceName.header.size = sizeof(DISPLAYCONFIG_SOURCE_DEVICE_NAME);
++                deviceName.header.adapterId = path.sourceInfo.adapterId;
++                deviceName.header.id = path.sourceInfo.id;
++                if (DisplayConfigGetDeviceInfo(&deviceName.header) == ERROR_SUCCESS) {
++                    return wcscmp(viewInfo.szDevice, deviceName.viewGdiDeviceName) != 0;
++                }
+                 return true;
+-            }
+-        }
+-    }
++            });
++
++    pathInfos.erase(discardThese, pathInfos.end());
+ 
+-    return false;
++    return pathInfos;
+ }
+ 
+ #if 0
+@@ -140,6 +149,143 @@ static float getMonitorSDRWhiteLevel(DISPLAYCONFIG_PATH_TARGET_INFO *targetInfo)
+ 
+ using WindowsScreenDataList = QList<QWindowsScreenData>;
+ 
++struct RegistryHandleDeleter
++{
++    void operator()(HKEY handle) const noexcept
++    {
++        if (handle != nullptr && handle != INVALID_HANDLE_VALUE)
++            RegCloseKey(handle);
++    }
++};
++
++using RegistryHandlePtr = std::unique_ptr<std::remove_pointer_t<HKEY>, RegistryHandleDeleter>;
++
++static void setMonitorDataFromSetupApi(QWindowsScreenData &data,
++                                       const std::vector<DISPLAYCONFIG_PATH_INFO> &pathGroup)
++{
++    if (pathGroup.empty()) {
++        return;
++    }
++
++    // The only property shared among monitors in a clone group is deviceName
++    {
++        DISPLAYCONFIG_TARGET_DEVICE_NAME deviceName = {};
++        deviceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
++        deviceName.header.size = sizeof(DISPLAYCONFIG_TARGET_DEVICE_NAME);
++        // The first element in the clone group is the main monitor.
++        deviceName.header.adapterId = pathGroup[0].targetInfo.adapterId;
++        deviceName.header.id = pathGroup[0].targetInfo.id;
++        if (DisplayConfigGetDeviceInfo(&deviceName.header) == ERROR_SUCCESS) {
++            data.devicePath = QString::fromWCharArray(deviceName.monitorDevicePath);
++        } else {
++            qCWarning(lcQpaWindows)
++                    << QLatin1String("Unable to get device information for %1:").arg(QString::number(pathGroup[0].targetInfo.id))
++                    << QSystemError::windowsString();
++        }
++    }
++
++    // The rest must be concatenated into the resulting property
++    QStringList names;
++    QStringList manufacturers;
++    QStringList models;
++    QStringList serialNumbers;
++
++    for (const auto &path : pathGroup) {
++        DISPLAYCONFIG_TARGET_DEVICE_NAME deviceName = {};
++        deviceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
++        deviceName.header.size = sizeof(DISPLAYCONFIG_TARGET_DEVICE_NAME);
++        deviceName.header.adapterId = path.targetInfo.adapterId;
++        deviceName.header.id = path.targetInfo.id;
++        if (DisplayConfigGetDeviceInfo(&deviceName.header) != ERROR_SUCCESS) {
++            qCWarning(lcQpaWindows)
++                    << QLatin1String("Unable to get device information for %1:").arg(QString::number(path.targetInfo.id)))
++                    << QSystemError::windowsString();
++            continue;
++        }
++
++        // https://learn.microsoft.com/en-us/windows-hardware/drivers/install/guid-devinterface-monitor
++        constexpr GUID GUID_DEVINTERFACE_MONITOR = {
++            0xe6f07b5f, 0xee97, 0x4a90, { 0xb0, 0x76, 0x33, 0xf5, 0x7b, 0xf4, 0xea, 0xa7 }
++        };
++        const HDEVINFO devInfo = SetupDiGetClassDevs(&GUID_DEVINTERFACE_MONITOR, nullptr, nullptr,
++                                                     DIGCF_DEVICEINTERFACE);
++
++        SP_DEVICE_INTERFACE_DATA deviceInterfaceData{};
++        deviceInterfaceData.cbSize = sizeof(deviceInterfaceData);
++
++        if (!SetupDiOpenDeviceInterfaceW(devInfo, deviceName.monitorDevicePath, DIODI_NO_ADD,
++                                         &deviceInterfaceData)) {
++            qCWarning(lcQpaWindows)
++                    << QLatin1String("Unable to open monitor interface to %1:").arg(data.deviceName)
++                    << QSystemError::windowsString();
++            continue;
++        }
++
++        DWORD requiredSize{ 0 };
++        if (SetupDiGetDeviceInterfaceDetailW(devInfo, &deviceInterfaceData, nullptr, 0,
++                                             &requiredSize, nullptr)
++            || GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
++            continue;
++        }
++
++        const std::unique_ptr<std::byte[]> storage(new std::byte[requiredSize]);
++        auto *devicePath = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W *>(storage.get());
++        devicePath->cbSize = sizeof(std::remove_pointer_t<decltype(devicePath)>);
++        SP_DEVINFO_DATA deviceInfoData{};
++        deviceInfoData.cbSize = sizeof(deviceInfoData);
++        if (!SetupDiGetDeviceInterfaceDetailW(devInfo, &deviceInterfaceData, devicePath,
++                                              requiredSize, nullptr, &deviceInfoData)) {
++            qCDebug(lcQpaWindows) << QLatin1String("Unable to get monitor metadata for %1:").arg(data.deviceName)
++                                  << QSystemError::windowsString();
++            continue;
++        }
++
++        const RegistryHandlePtr edidRegistryKey{ SetupDiOpenDevRegKey(
++                devInfo, &deviceInfoData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ) };
++
++        if (!edidRegistryKey || edidRegistryKey.get() == INVALID_HANDLE_VALUE)
++            continue;
++
++        DWORD edidDataSize{ 0 };
++        if (RegQueryValueExW(edidRegistryKey.get(), L"EDID", nullptr, nullptr, nullptr,
++                             &edidDataSize)
++            != ERROR_SUCCESS) {
++            continue;
++        }
++
++        QByteArray edidData;
++        edidData.resize(edidDataSize);
++
++        if (RegQueryValueExW(edidRegistryKey.get(), L"EDID", nullptr, nullptr,
++                             reinterpret_cast<unsigned char *>(edidData.data()), &edidDataSize)
++            != ERROR_SUCCESS) {
++            qCDebug(lcQpaWindows) << QLatin1String("Unable to get EDID from the Registry for %1:").arg(
++                    data.deviceName)
++                                  << QSystemError::windowsString();
++            continue;
++        }
++
++        QEdidParser edid;
++
++        if (!edid.parse(edidData)) {
++            qCDebug(lcQpaWindows) << "Invalid EDID blob for" << data.deviceName;
++            continue;
++        }
++
++        // We skip edid.identifier because it is unreliable, and a better option
++        // is already available through DisplayConfigGetDeviceInfo (see below).
++        names << QString::fromWCharArray(deviceName.monitorFriendlyDeviceName);
++        manufacturers << edid.manufacturer;
++        models << edid.model;
++        serialNumbers << edid.serialNumber;
++    }
++
++    data.name = names.join(QLatin1String("|"));
++    data.manufacturer = manufacturers.join(QLatin1String("|"));
++    data.model = models.join(QLatin1String("|"));
++    data.serialNumber = serialNumbers.join(QLatin1String("|"));
++}
++
+ static bool monitorData(HMONITOR hMonitor, QWindowsScreenData *data)
+ {
+     MONITORINFOEX info;
+@@ -151,20 +297,14 @@ static bool monitorData(HMONITOR hMonitor, QWindowsScreenData *data)
+     data->hMonitor = hMonitor;
+     data->geometry = QRect(QPoint(info.rcMonitor.left, info.rcMonitor.top), QPoint(info.rcMonitor.right - 1, info.rcMonitor.bottom - 1));
+     data->availableGeometry = QRect(QPoint(info.rcWork.left, info.rcWork.top), QPoint(info.rcWork.right - 1, info.rcWork.bottom - 1));
+-    DISPLAYCONFIG_PATH_INFO pathInfo = {};
+-    const bool hasPathInfo = getPathInfo(info, &pathInfo);
+-    if (hasPathInfo) {
+-        DISPLAYCONFIG_TARGET_DEVICE_NAME deviceName = {};
+-        deviceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+-        deviceName.header.size = sizeof(DISPLAYCONFIG_TARGET_DEVICE_NAME);
+-        deviceName.header.adapterId = pathInfo.targetInfo.adapterId;
+-        deviceName.header.id = pathInfo.targetInfo.id;
+-        if (DisplayConfigGetDeviceInfo(&deviceName.header) == ERROR_SUCCESS)
+-            data->name = QString::fromWCharArray(deviceName.monitorFriendlyDeviceName);
++    data->deviceName = QString::fromWCharArray(info.szDevice);
++    const auto pathGroup = getPathInfo(info);
++    if (!pathGroup.empty()) {
++        setMonitorDataFromSetupApi(*data, pathGroup);
+     }
+     if (data->name.isEmpty())
+-        data->name = QString::fromWCharArray(info.szDevice);
+-    if (wcscmp(info.szDevice, L"WinDisc") == 0) {
++        data->name = data->deviceName;
++    if (data->deviceName == u"WinDisc") {
+         data->flags |= QWindowsScreenData::LockScreen;
+     } else {
+         if (const HDC hdc = CreateDC(info.szDevice, nullptr, nullptr, nullptr)) {
+@@ -179,14 +319,16 @@ static bool monitorData(HMONITOR hMonitor, QWindowsScreenData *data)
+             DeleteDC(hdc);
+         } else {
+             qWarning("%s: Unable to obtain handle for monitor '%s', defaulting to %g DPI.",
+-                     __FUNCTION__, qPrintable(QString::fromWCharArray(info.szDevice)),
++                     __FUNCTION__, qPrintable(data->deviceName),
+                      data->dpi.first);
+         } // CreateDC() failed
+     } // not lock screen
+ 
+     // ### We might want to consider storing adapterId/id from DISPLAYCONFIG_PATH_TARGET_INFO,
+     // if we are going to use DISPLAYCONFIG lookups more.
+-    if (hasPathInfo) {
++    if (!pathGroup.empty()) {
++        // The first element in the clone group is the main monitor.
++        const auto &pathInfo = pathGroup[0];
+         switch (pathInfo.targetInfo.rotation) {
+         case DISPLAYCONFIG_ROTATION_IDENTITY:
+             data->orientation = Qt::LandscapeOrientation;
+@@ -229,6 +371,16 @@ BOOL QT_WIN_CALLBACK monitorEnumCallback(HMONITOR hMonitor, HDC, LPRECT, LPARAM
+     QWindowsScreenData data;
+     if (monitorData(hMonitor, &data)) {
+         auto *result = reinterpret_cast<WindowsScreenDataList *>(p);
++        auto it = std::find_if(result->rbegin(), result->rend(),
++            [&data](QWindowsScreenData i){ return i.name == data.name; });
++        if (it != result->rend()) {
++            int previousIndex = 1;
++            if (it->deviceIndex.has_value())
++                previousIndex = it->deviceIndex.value();
++            else
++                (*it).deviceIndex = 1;
++            data.deviceIndex = previousIndex + 1;
++        }
+         // QWindowSystemInterface::handleScreenAdded() documentation specifies that first
+         // added screen will be the primary screen, so order accordingly.
+         // Note that the side effect of this policy is that there is no way to change primary
+@@ -255,14 +407,14 @@ static QDebug operator<<(QDebug dbg, const QWindowsScreenData &d)
+     QDebugStateSaver saver(dbg);
+     dbg.nospace();
+     dbg.noquote();
+-    dbg << "Screen \"" << d.name << "\" "
+-        << d.geometry.width() << 'x' << d.geometry.height() << '+' << d.geometry.x() << '+' << d.geometry.y()
+-        << " avail: "
+-        << d.availableGeometry.width() << 'x' << d.availableGeometry.height() << '+' << d.availableGeometry.x() << '+' << d.availableGeometry.y()
+-        << " physical: " << d.physicalSizeMM.width() << 'x' << d.physicalSizeMM.height()
+-        << " DPI: " << d.dpi.first << 'x' << d.dpi.second << " Depth: " << d.depth
+-        << " Format: " << d.format
+-        << " hMonitor: " << d.hMonitor;
++    dbg << "Screen \"" << d.name << "\" " << d.geometry.width() << 'x' << d.geometry.height() << '+'
++        << d.geometry.x() << '+' << d.geometry.y() << " avail: " << d.availableGeometry.width()
++        << 'x' << d.availableGeometry.height() << '+' << d.availableGeometry.x() << '+'
++        << d.availableGeometry.y() << " physical: " << d.physicalSizeMM.width() << 'x'
++        << d.physicalSizeMM.height() << " DPI: " << d.dpi.first << 'x' << d.dpi.second
++        << " Depth: " << d.depth << " Format: " << d.format << " hMonitor: " << d.hMonitor
++        << " device name: " << d.deviceName << " manufacturer: " << d.manufacturer
++        << " model: " << d.model << " serial number: " << d.serialNumber;
+     if (d.flags & QWindowsScreenData::PrimaryScreen)
+         dbg << " primary";
+     if (d.flags & QWindowsScreenData::VirtualDesktop)
+@@ -288,6 +440,13 @@ QWindowsScreen::QWindowsScreen(const QWindowsScreenData &data) :
+ {
+ }
+ 
++QString QWindowsScreen::name() const
++{
++    return m_data.deviceIndex.has_value()
++               ? (QLatin1String("%1 (%2)").arg(m_data.name, QString::number(m_data.deviceIndex.value())))
++               : m_data.name;
++}
++
+ Q_GUI_EXPORT QPixmap qt_pixmapFromWinHBITMAP(HBITMAP bitmap, int hbitmapFormat = 0);
+ 
+ QPixmap QWindowsScreen::grabWindow(WId window, int xIn, int yIn, int width, int height) const
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.h forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.h
+index c8db987e4a0d260291838bdf921681bf44c2d67e..4a71724ec16c0b79f134b6fe5982663f104f15c0 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.h
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.h
+@@ -66,9 +66,15 @@ struct QWindowsScreenData
+     QImage::Format format = QImage::Format_ARGB32_Premultiplied;
+     unsigned flags = VirtualDesktop;
+     QString name;
++    QString manufacturer;
++    QString model;
++    QString serialNumber;
+     Qt::ScreenOrientation orientation = Qt::LandscapeOrientation;
+     qreal refreshRateHz = 60;
+     HMONITOR hMonitor = nullptr;
++    QString deviceName;
++    QString devicePath;
++    std::optional<int> deviceIndex = std::nullopt;
+ };
+ 
+ class QWindowsScreen : public QPlatformScreen
+@@ -89,7 +95,10 @@ public:
+     QDpi logicalBaseDpi() const override { return QDpi(baseDpi, baseDpi); }
+     qreal devicePixelRatio() const override { return 1.0; }
+     qreal refreshRate() const override { return m_data.refreshRateHz; }
+-    QString name() const override { return m_data.name; }
++    QString name() const override;
++    QString manufacturer() const override { return m_data.manufacturer; }
++    QString model() const override { return m_data.model; }
++    QString serialNumber() const override { return m_data.serialNumber; }
+     Qt::ScreenOrientation orientation() const override { return m_data.orientation; }
+     QList<QPlatformScreen *> virtualSiblings() const override;
+     QWindow *topLevelAt(const QPoint &point) const override;

@@ -1,0 +1,28 @@
+diff --git forkSrcPrefix/qtbase/src/corelib/kernel/qproperty.cpp forkDstPrefix/qtbase/src/corelib/kernel/qproperty.cpp
+index 49b73b4e36e8c56ace412f34868c60fe13fe8dff..79b6482e06ed46168448dc6f5e9c2773a2ebf4b9 100644
+--- forkSrcPrefix/qtbase/src/corelib/kernel/qproperty.cpp
++++ forkDstPrefix/qtbase/src/corelib/kernel/qproperty.cpp
+@@ -566,6 +566,11 @@ void QPropertyBindingData::registerWithCurrentlyEvaluatingBinding_helper(Binding
+ {
+     QPropertyBindingDataPointer d{this};
+ 
++    if (currentState->alreadyCaptureProperties.contains(this))
++        return;
++    else
++        currentState->alreadyCaptureProperties.push_back(this);
++
+     QPropertyObserverPointer dependencyObserver = currentState->binding->allocateDependencyObserver();
+     Q_ASSERT(QPropertyObserver::ObserverNotifiesBinding == 0);
+     dependencyObserver.setBindingToNotify_unsafe(currentState->binding);
+diff --git forkSrcPrefix/qtbase/src/corelib/kernel/qproperty_p.h forkDstPrefix/qtbase/src/corelib/kernel/qproperty_p.h
+index 4715df0870c6d1dd79c894c77b8a892e991ac83b..ad7d1078b4c31a2ff1d3b872cb5e2b27eaa55691 100644
+--- forkSrcPrefix/qtbase/src/corelib/kernel/qproperty_p.h
++++ forkDstPrefix/qtbase/src/corelib/kernel/qproperty_p.h
+@@ -143,6 +143,7 @@ struct BindingEvaluationState
+     QPropertyBindingPrivate *binding;
+     BindingEvaluationState *previousState = nullptr;
+     BindingEvaluationState **currentState = nullptr;
++    QVarLengthArray<const QPropertyBindingData *, 8> alreadyCaptureProperties;
+ };
+ 
+ /*!

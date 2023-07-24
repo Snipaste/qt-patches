@@ -1,0 +1,128 @@
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
+index 09a38b2a096cb7c70a4a9eefd5c35a22bffff313..bd4ddc5cf8fcf54365eba7fca485a25e9ad8559e 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
+@@ -1365,11 +1365,15 @@ bool QWindowsContext::windowsProc(HWND hwnd, UINT message,
+         break;
+     case QtWindows::EnterSizeMoveEvent:
+         platformWindow->setFlag(QWindowsWindow::ResizeMoveActive);
++        if (!IsZoomed(hwnd))
++            platformWindow->updateRestoreGeometry();
+         return true;
+     case QtWindows::ExitSizeMoveEvent:
+         platformWindow->clearFlag(QWindowsWindow::ResizeMoveActive);
+         platformWindow->checkForScreenChanged();
+         handleExitSizeMove(platformWindow->window());
++        if (!IsZoomed(hwnd))
++            platformWindow->updateRestoreGeometry();
+         return true;
+     case QtWindows::ScrollEvent:
+         if (!(d->m_systemInfo & QWindowsContext::SI_SupportsPointer))
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+index 4ea786667681c35e99c3f742addf918607acb01a..ad201f0925b4afa2fec60dc8da8cff3284a2b2fa 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.cpp
+@@ -824,6 +824,7 @@ QWindowsWindowData
+     QRect obtainedGeometry(context->obtainedPos, context->obtainedSize);
+ 
+     result.geometry = obtainedGeometry;
++    result.restoreGeometry = frameGeometry(result.hwnd, topLevel);
+     result.fullFrameMargins = context->margins;
+     result.embedded = embedded;
+     result.hasFrame = hasFrame;
+@@ -1831,6 +1832,12 @@ void QWindowsWindow::handleCompositionSettingsChanged()
+     }
+ }
+ 
++qreal QWindowsWindow::dpiRelativeScale(const UINT dpi) const
++{
++    return QHighDpiScaling::roundScaleFactor(qreal(dpi) / QWindowsScreen::baseDpi) /
++           QHighDpiScaling::roundScaleFactor(qreal(savedDpi()) / QWindowsScreen::baseDpi);
++}
++
+ void QWindowsWindow::handleDpiScaledSize(WPARAM wParam, LPARAM lParam, LRESULT *result)
+ {
+     // We want to keep QWindow's device independent size constant across the
+@@ -1852,12 +1859,15 @@ void QWindowsWindow::handleDpiScaledSize(WPARAM wParam, LPARAM lParam, LRESULT *
+ void QWindowsWindow::handleDpiChanged(HWND hwnd, WPARAM wParam, LPARAM lParam)
+ {
+     const UINT dpi = HIWORD(wParam);
+-    const qreal scale = qreal(dpi) / qreal(savedDpi());
++    const qreal scale = dpiRelativeScale(dpi);
+     setSavedDpi(dpi);
+ 
+     // Send screen change first, so that the new sceen is set during any following resize
+     checkForScreenChanged(QWindowsWindow::FromDpiChange);
+ 
++    if (!IsZoomed(hwnd))
++        m_data.restoreGeometry.setSize(m_data.restoreGeometry.size() * scale);
++
+     // We get WM_DPICHANGED in one of two situations:
+     //
+     // 1. The DPI change is a "spontaneous" DPI change as a result of e.g.
+@@ -2078,6 +2088,9 @@ void QWindowsWindow::handleGeometryChange()
+     if (testFlag(SynchronousGeometryChangeEvent))
+         QWindowSystemInterface::flushWindowSystemEvents(QEventLoop::ExcludeUserInputEvents);
+ 
++    if (!testFlag(ResizeMoveActive))
++        updateRestoreGeometry();
++
+     if (!wasSync)
+         clearFlag(SynchronousGeometryChangeEvent);
+     qCDebug(lcQpaEvents) << __FUNCTION__ << this << window() << m_data.geometry;
+@@ -2252,6 +2265,14 @@ void QWindowsWindow::handleWindowStateChange(Qt::WindowStates state)
+         handleHidden();
+         QWindowSystemInterface::flushWindowSystemEvents(QEventLoop::ExcludeUserInputEvents); // Tell QQuickWindow to stop rendering now.
+     } else {
++        if (state & Qt::WindowMaximized) {
++            WINDOWPLACEMENT windowPlacement{};
++            windowPlacement.length = sizeof(WINDOWPLACEMENT);
++            GetWindowPlacement(m_data.hwnd, &windowPlacement);
++            const RECT geometry = RECTfromQRect(m_data.restoreGeometry);
++            windowPlacement.rcNormalPosition = geometry;
++            SetWindowPlacement(m_data.hwnd, &windowPlacement);
++        }
+         // QTBUG-17548: We send expose events when receiving WM_Paint, but for
+         // layered windows and transient children, we won't receive any WM_Paint.
+         QWindow *w = window();
+@@ -2275,6 +2296,11 @@ void QWindowsWindow::handleWindowStateChange(Qt::WindowStates state)
+     }
+ }
+ 
++void QWindowsWindow::updateRestoreGeometry()
++{
++    m_data.restoreGeometry = normalFrameGeometry(m_data.hwnd);
++}
++
+ void QWindowsWindow::setWindowState(Qt::WindowStates state)
+ {
+     if (m_data.hwnd) {
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.h forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.h
+index af577363723b7e9c3021138bede6d2d34d550721..c6f76c830c4720015c5342c1f202e08a989994d8 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.h
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowswindow.h
+@@ -113,6 +113,7 @@ struct QWindowsWindowData
+ {
+     Qt::WindowFlags flags;
+     QRect geometry;
++    QRect restoreGeometry;
+     QMargins fullFrameMargins; // Do not use directly for windows, see FrameDirty.
+     QMargins customMargins;    // User-defined, additional frame for NCCALCSIZE
+     HWND hwnd = nullptr;
+@@ -253,6 +254,8 @@ public:
+     void setGeometry(const QRect &rect) override;
+     QRect geometry() const override { return m_data.geometry; }
+     QRect normalGeometry() const override;
++    QRect restoreGeometry() const { return m_data.restoreGeometry; }
++    void updateRestoreGeometry();
+ 
+     void setVisible(bool visible) override;
+     bool isVisible() const;
+@@ -376,6 +379,7 @@ public:
+ 
+     void setSavedDpi(int dpi) { m_savedDpi = dpi; }
+     int savedDpi() const { return m_savedDpi; }
++    qreal dpiRelativeScale(const UINT dpi) const;
+ 
+ private:
+     inline void show_sys() const;

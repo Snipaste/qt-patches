@@ -1,0 +1,70 @@
+diff --git forkSrcPrefix/qtbase/src/gui/text/qtextdocument.cpp forkDstPrefix/qtbase/src/gui/text/qtextdocument.cpp
+index 9ca29090a06a0d3557633914f24741061168237b..be4268746e424cca03839cc61ebce2b3166201c5 100644
+--- forkSrcPrefix/qtbase/src/gui/text/qtextdocument.cpp
++++ forkDstPrefix/qtbase/src/gui/text/qtextdocument.cpp
+@@ -2359,6 +2359,7 @@ QString QTextHtmlExporter::toHtml(ExportMode mode)
+         html += QString::fromLatin1("<title>") + title + QString::fromLatin1("</title>");
+     html += QLatin1String("<style type=\"text/css\">\n");
+     html += QLatin1String("p, li { white-space: pre-wrap; }\n");
++    html += QLatin1String("hr { height: 1px; border-width: 0; }\n");
+     html += QLatin1String("</style>");
+     html += QLatin1String("</head><body");
+ 
+@@ -3047,8 +3048,15 @@ void QTextHtmlExporter::emitBlock(const QTextBlock &block)
+         QTextLength width = blockFormat.lengthProperty(QTextFormat::BlockTrailingHorizontalRulerWidth);
+         if (width.type() != QTextLength::VariableLength)
+             emitTextLength("width", width);
+-        else
+-            html += QLatin1Char(' ');
++        html += QLatin1Char(' ');
++
++        if (blockFormat.hasProperty(QTextFormat::BackgroundBrush)) {
++            html += QLatin1String("style=\"");
++            html += QLatin1String("background-color:");
++            html += colorValue(qvariant_cast<QBrush>(blockFormat.property(QTextFormat::BackgroundBrush)).color());
++            html += QLatin1Char(';');
++            html += QLatin1Char('\"');
++        }
+ 
+         html += QLatin1String("/>");
+         return;
+diff --git forkSrcPrefix/qtbase/src/gui/text/qtextdocumentlayout.cpp forkDstPrefix/qtbase/src/gui/text/qtextdocumentlayout.cpp
+index 303a31d336336cf259a5d004bb5805889da7b17f..00f5fabf71470956733e00d2aaea08a4c44def81 100644
+--- forkSrcPrefix/qtbase/src/gui/text/qtextdocumentlayout.cpp
++++ forkDstPrefix/qtbase/src/gui/text/qtextdocumentlayout.cpp
+@@ -2044,7 +2044,9 @@ void QTextDocumentLayoutPrivate::drawBlock(const QPointF &offset, QPainter *pain
+             rect.setRight((fd->size.width - fd->rightMargin).toReal());
+         }
+ 
+-        fillBackground(painter, rect, bg, r.topLeft());
++        // in the case of <hr>, the background-color CSS style fills only the rule's thickness instead of the whole line
++        if (!blockFormat.hasProperty(QTextFormat::BlockTrailingHorizontalRulerWidth))
++            fillBackground(painter, rect, bg, r.topLeft());
+     }
+ 
+     QList<QTextLayout::FormatRange> selections;
+@@ -2104,7 +2106,10 @@ void QTextDocumentLayoutPrivate::drawBlock(const QPointF &offset, QPainter *pain
+ 
+     if (blockFormat.hasProperty(QTextFormat::BlockTrailingHorizontalRulerWidth)) {
+         const qreal width = blockFormat.lengthProperty(QTextFormat::BlockTrailingHorizontalRulerWidth).value(r.width());
+-        painter->setPen(context.palette.color(QPalette::Dark));
++        const auto color = blockFormat.hasProperty(QTextFormat::BackgroundBrush)
++                         ? qvariant_cast<QBrush>(blockFormat.property(QTextFormat::BackgroundBrush)).color()
++                         : context.palette.color(QPalette::Inactive, QPalette::WindowText);
++        painter->setPen(color);
+         qreal y = r.bottom();
+         if (bl.length() == 1)
+             y = r.top() + r.height() / 2;
+diff --git forkSrcPrefix/qtbase/src/gui/text/qtexthtmlparser.cpp forkDstPrefix/qtbase/src/gui/text/qtexthtmlparser.cpp
+index efe5f3ed6ccde5339626af585a952eefc5e666e7..61143e0e8b24c81842e7bfd293d0b3550db07eb2 100644
+--- forkSrcPrefix/qtbase/src/gui/text/qtexthtmlparser.cpp
++++ forkDstPrefix/qtbase/src/gui/text/qtexthtmlparser.cpp
+@@ -1453,6 +1453,8 @@ void QTextHtmlParserNode::applyCssDeclarations(const QList<QCss::Declaration> &d
+             applyBackgroundImage(bgImage, resourceProvider);
+         } else if (bgBrush.style() != Qt::NoBrush) {
+             charFormat.setBackground(bgBrush);
++            if (id == Html_hr)
++                blockFormat.setProperty(QTextFormat::BackgroundBrush, bgBrush);
+         }
+     }
+ }
