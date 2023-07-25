@@ -173,7 +173,7 @@ index 22be39bd921e9d591e172cd1537fa7c441c4ef6c..e31cab1b4a7c81bc60ad38f2a236b5a9
 +        deviceName.header.id = path.targetInfo.id;
 +        if (DisplayConfigGetDeviceInfo(&deviceName.header) != ERROR_SUCCESS) {
 +            qCWarning(lcQpaWindows)
-+                    << QLatin1String("Unable to get device information for %1:").arg(QString::number(path.targetInfo.id)))
++                    << QLatin1String("Unable to get device information for %1:").arg(QString::number(path.targetInfo.id))
 +                    << QSystemError::windowsString();
 +            continue;
 +        }
