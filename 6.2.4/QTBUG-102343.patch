@@ -1,0 +1,203 @@
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qtwindowsglobal.h forkDstPrefix/qtbase/src/plugins/platforms/windows/qtwindowsglobal.h
+index 5c4ee1e1104f5802bb8b124f1679bf06343a169e..cec09294c328635ef3fa9a593b8da3478907792f 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qtwindowsglobal.h
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qtwindowsglobal.h
+@@ -167,8 +167,7 @@ enum WindowsEventType // Simplify event types
+     InputMethodRequest = InputMethodEventFlag + 6,
+     ThemeChanged = ThemingEventFlag + 1,
+     CompositionSettingsChanged = ThemingEventFlag + 2,
+-    DisplayChangedEvent = 437,
+-    SettingChangedEvent = DisplayChangedEvent + 1,
++    SettingChangedEvent = 438,
+     ScrollEvent = GenericEventFlag + 1,
+     ContextMenu = 123,
+     GestureEvent = 124,
+@@ -285,8 +284,6 @@ inline QtWindows::WindowsEventType windowsEventType(UINT message, WPARAM wParamI
+     // http://msdn.microsoft.com/en-us/library/ms695534(v=vs.85).aspx
+     case WM_SETTINGCHANGE:
+         return QtWindows::SettingChangedEvent;
+-    case WM_DISPLAYCHANGE:
+-        return QtWindows::DisplayChangedEvent;
+     case WM_THEMECHANGED:
+ #ifdef WM_SYSCOLORCHANGE // Windows 7: Handle color change as theme change (QTBUG-34170).
+     case WM_SYSCOLORCHANGE:
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
+index 09a38b2a096cb7c70a4a9eefd5c35a22bffff313..dbff097ea3118ac4c1c5c65b3273798af9f661be 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.cpp
+@@ -106,6 +106,7 @@ Q_LOGGING_CATEGORY(lcQpaTablet, "qt.qpa.input.tablet")
+ Q_LOGGING_CATEGORY(lcQpaAccessibility, "qt.qpa.accessibility")
+ Q_LOGGING_CATEGORY(lcQpaUiAutomation, "qt.qpa.uiautomation")
+ Q_LOGGING_CATEGORY(lcQpaTrayIcon, "qt.qpa.trayicon")
++Q_LOGGING_CATEGORY(lcQpaScreen, "qt.qpa.screen")
+ 
+ int QWindowsContext::verbose = 0;
+ 
+@@ -1231,12 +1232,6 @@ bool QWindowsContext::windowsProc(HWND hwnd, UINT message,
+ #else
+         return false;
+ #endif
+-    case QtWindows::DisplayChangedEvent:
+-        if (QWindowsTheme *t = QWindowsTheme::instance())
+-            t->displayChanged();
+-        QWindowsWindow::displayChanged();
+-        d->m_screenManager.handleScreenChanges();
+-        return false;
+     case QtWindows::SettingChangedEvent: {
+         QWindowsWindow::settingsChanged();
+         const bool darkMode = QWindowsTheme::queryDarkMode();
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.h forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.h
+index 0ddb35eb0712964d67bfab21f1c12b98f87592b4..6710d5256657c2ba70fc31b163aaeab1c1483457 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.h
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowscontext.h
+@@ -67,6 +67,7 @@ Q_DECLARE_LOGGING_CATEGORY(lcQpaTablet)
+ Q_DECLARE_LOGGING_CATEGORY(lcQpaAccessibility)
+ Q_DECLARE_LOGGING_CATEGORY(lcQpaUiAutomation)
+ Q_DECLARE_LOGGING_CATEGORY(lcQpaTrayIcon)
++Q_DECLARE_LOGGING_CATEGORY(lcQpaScreen)
+ 
+ class QWindow;
+ class QPlatformScreen;
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
+index fdb65e7f8f672b0afdfc1a96fc68f506514e7048..efae53946d6186e48225f6e2d437d76452801b02 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsintegration.cpp
+@@ -302,7 +302,7 @@ QWindowsIntegration::QWindowsIntegration(const QStringList &paramList) :
+ #if QT_CONFIG(clipboard)
+     d->m_clipboard.registerViewer();
+ #endif
+-    d->m_context.screenManager().handleScreenChanges();
++    d->m_context.screenManager().initialize();
+     d->m_context.setDetectAltGrModifier((d->m_options & DetectAltGrModifier) != 0);
+ }
+ 
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
+index 22be39bd921e9d591e172cd1537fa7c441c4ef6c..e7c80d93bdd769b09fe82026db7175a9f8eab4f6 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
+@@ -348,7 +348,7 @@ QWindow *QWindowsScreen::topLevelAt(const QPoint &point) const
+     if (QWindow *child = QWindowsScreen::windowAt(point, CWP_SKIPINVISIBLE))
+         result = QWindowsWindow::topLevelOf(child);
+     if (QWindowsContext::verbose > 1)
+-        qCDebug(lcQpaWindows) <<__FUNCTION__ << point << result;
++        qCDebug(lcQpaScreen) <<__FUNCTION__ << point << result;
+     return result;
+ }
+ 
+@@ -359,7 +359,7 @@ QWindow *QWindowsScreen::windowAt(const QPoint &screenPoint, unsigned flags)
+             findPlatformWindowAt(GetDesktopWindow(), screenPoint, flags))
+         result = bw->window();
+     if (QWindowsContext::verbose > 1)
+-        qCDebug(lcQpaWindows) <<__FUNCTION__ << screenPoint << " returns " << result;
++        qCDebug(lcQpaScreen) <<__FUNCTION__ << screenPoint << " returns " << result;
+     return result;
+ }
+ 
+@@ -395,7 +395,7 @@ void QWindowsScreen::handleChanges(const QWindowsScreenData &newData)
+     m_data.physicalSizeMM = newData.physicalSizeMM;
+ 
+     if (m_data.hMonitor != newData.hMonitor) {
+-        qCDebug(lcQpaWindows) << "Monitor" << m_data.name
++        qCDebug(lcQpaScreen) << "Monitor" << m_data.name
+             << "has had its hMonitor handle changed from"
+             << m_data.hMonitor << "to" << newData.hMonitor;
+         m_data.hMonitor = newData.hMonitor;
+@@ -540,8 +540,45 @@ QPlatformScreen::SubpixelAntialiasingType QWindowsScreen::subpixelAntialiasingTy
+     \internal
+ */
+ 
++extern "C" LRESULT QT_WIN_CALLBACK qDisplayChangeObserverWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
++{
++    if (message == WM_DISPLAYCHANGE) {
++        qCDebug(lcQpaScreen) << "Handling WM_DISPLAYCHANGE";
++        if (QWindowsTheme *t = QWindowsTheme::instance())
++            t->displayChanged();
++        QWindowsWindow::displayChanged();
++        QWindowsContext::instance()->screenManager().handleScreenChanges();
++    }
++
++    return DefWindowProc(hwnd, message, wParam, lParam);
++}
++
+ QWindowsScreenManager::QWindowsScreenManager() = default;
+ 
++void QWindowsScreenManager::initialize()
++{
++    qCDebug(lcQpaScreen) << "Initializing screen manager";
++
++    auto className = QWindowsContext::instance()->registerWindowClass(
++        QWindowsContext::classNamePrefix() + QLatin1String("ScreenChangeObserverWindow"),
++        qDisplayChangeObserverWndProc);
++
++    // HWND_MESSAGE windows do not get WM_DISPLAYCHANGE, so we need to create
++    // a real top level window that we never show.
++    m_displayChangeObserver = CreateWindowEx(0, reinterpret_cast<LPCWSTR>(className.utf16()),
++        nullptr, WS_TILED, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
++        nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
++    Q_ASSERT(m_displayChangeObserver);
++
++    qCDebug(lcQpaScreen) << "Created display change observer" << m_displayChangeObserver;
++
++    handleScreenChanges();
++}
++
++QWindowsScreenManager::~QWindowsScreenManager()
++{
++    DestroyWindow(m_displayChangeObserver);
++}
+ 
+ bool QWindowsScreenManager::isSingleScreen()
+ {
+@@ -585,7 +622,7 @@ static void moveToVirtualScreen(QWindow *w, const QScreen *newScreen)
+ 
+ void QWindowsScreenManager::removeScreen(int index)
+ {
+-    qCDebug(lcQpaWindows) << "Removing Monitor:" << m_screens.at(index)->data();
++    qCDebug(lcQpaScreen) << "Removing Monitor:" << m_screens.at(index)->data();
+     QScreen *screen = m_screens.at(index)->screen();
+     QScreen *primaryScreen = QGuiApplication::primaryScreen();
+     // QTBUG-38650: When a screen is disconnected, Windows will automatically
+@@ -637,7 +674,7 @@ bool QWindowsScreenManager::handleScreenChanges()
+             m_screens.push_back(newScreen);
+             QWindowSystemInterface::handleScreenAdded(newScreen,
+                                                              newData.flags & QWindowsScreenData::PrimaryScreen);
+-            qCDebug(lcQpaWindows) << "New Monitor: " << newData;
++            qCDebug(lcQpaScreen) << "New Monitor: " << newData;
+         }    // exists
+     }        // for new screens.
+     // Remove deleted ones but keep main monitors if we get only the
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.h forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.h
+index c8db987e4a0d260291838bdf921681bf44c2d67e..89549b6cd571241844de65e2e8952c24ba6ceeb4 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.h
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.h
+@@ -130,6 +130,8 @@ public:
+     using WindowsScreenList = QList<QWindowsScreen *>;
+ 
+     QWindowsScreenManager();
++    void initialize();
++    ~QWindowsScreenManager();
+ 
+     void clearScreens();
+ 
+@@ -144,6 +146,7 @@ public:
+ private:
+     void removeScreen(int index);
+ 
++    HWND m_displayChangeObserver = nullptr;
+     WindowsScreenList m_screens;
+ };
+ 
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
+index 7df3c22654828cc508b5449cbee61ef8263e10ec..fe8afa91574f8e7c3d789168b63db23880f91d31 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowssystemtrayicon.cpp
+@@ -130,9 +130,6 @@ static int indexOfHwnd(HWND hwnd)
+ extern "C" LRESULT QT_WIN_CALLBACK qWindowsTrayIconWndProc(HWND hwnd, UINT message,
+                                                            WPARAM wParam, LPARAM lParam)
+ {
+-    // QTBUG-79248: Trigger screen update if there are no other windows.
+-    if (message == WM_DPICHANGED && QGuiApplication::topLevelWindows().isEmpty())
+-        QWindowsContext::instance()->screenManager().handleScreenChanges();
+     if (message == MYWM_TASKBARCREATED || message == MYWM_NOTIFYICON
+         || message == WM_INITMENU || message == WM_INITMENUPOPUP
+         || message == WM_CLOSE || message == WM_COMMAND) {
