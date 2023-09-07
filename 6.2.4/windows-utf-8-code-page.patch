@@ -1,0 +1,23 @@
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsmime.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsmime.cpp
+index 4815a2c0b56058f3551ab119f472b537ce7f3f57..2e2e6bdd301ef98131509c83856c6907b105a5a2 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsmime.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsmime.cpp
+@@ -469,7 +469,7 @@ public:
+ bool QWindowsMimeText::canConvertFromMime(const FORMATETC &formatetc, const QMimeData *mimeData) const
+ {
+     int cf = getCf(formatetc);
+-    return (cf == CF_UNICODETEXT || cf == CF_TEXT) && mimeData->hasText();
++    return (cf == CF_UNICODETEXT || (cf == CF_TEXT && GetACP() != CP_UTF8)) && mimeData->hasText();
+ }
+ 
+ /*
+@@ -570,7 +570,8 @@ QList<FORMATETC> QWindowsMimeText::formatsForMime(const QString &mimeType, const
+     QList<FORMATETC> formatics;
+     if (mimeType.startsWith(u"text/plain") && mimeData->hasText()) {
+         formatics += setCf(CF_UNICODETEXT);
+-        formatics += setCf(CF_TEXT);
++        if (GetACP() != CP_UTF8)
++                formatics += setCf(CF_TEXT);
+     }
+     return formatics;
+ }
