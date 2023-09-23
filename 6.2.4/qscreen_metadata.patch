@@ -36,7 +36,7 @@ index 3efde8cf5315cfae624df64603da7112635f43d4..0ca048695548ee6af8df091d485df8ea
          shlwapi
          user32
 diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
-index 22be39bd921e9d591e172cd1537fa7c441c4ef6c..d99a9b6b2877c22ef6a239357b6e7e9810350e01 100644
+index 22be39bd921e9d591e172cd1537fa7c441c4ef6c..e31cab1b4a7c81bc60ad38f2a236b5a909748c3f 100644
 --- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
 +++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsscreen.cpp
 @@ -50,12 +50,20 @@
@@ -252,7 +252,7 @@ index 22be39bd921e9d591e172cd1537fa7c441c4ef6c..d99a9b6b2877c22ef6a239357b6e7e98
 +        names << QString::fromWCharArray(deviceName.monitorFriendlyDeviceName);
 +        manufacturers << edid.manufacturer;
 +        models << edid.model;
-+        serialNumbers << edid.serialNumber + data.deviceName;
++        serialNumbers << edid.serialNumber;
 +    }
 +
 +    data.name = names.join(QLatin1String("|"));
