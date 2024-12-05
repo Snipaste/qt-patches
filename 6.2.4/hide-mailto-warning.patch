@@ -1,0 +1,12 @@
+diff --git forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsservices.cpp forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsservices.cpp
+index f11f9482ad49f400649ed0037e47e7113ad5e189..2f535664dd4666416e37000bcafecfabad334898 100644
+--- forkSrcPrefix/qtbase/src/plugins/platforms/windows/qwindowsservices.cpp
++++ forkDstPrefix/qtbase/src/plugins/platforms/windows/qwindowsservices.cpp
+@@ -132,7 +132,6 @@ static inline bool launchMail(const QUrl &url)
+ {
+     QString command = mailCommand();
+     if (command.isEmpty()) {
+-        qWarning("Cannot launch '%ls': There is no mail program installed.", qUtf16Printable(url.toString()));
+         return false;
+     }
+     //Make sure the path for the process is in quotes

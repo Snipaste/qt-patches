@@ -1,0 +1,13 @@
+diff --git forkSrcPrefix/qtbase/src/gui/text/qfontdatabase.cpp forkDstPrefix/qtbase/src/gui/text/qfontdatabase.cpp
+index 333d8422b16964b13a04e5d4d83be6bb59fcf66e..89fbb3a023bc9d0e1de8084f61e4c1598f3978a5 100644
+--- forkSrcPrefix/qtbase/src/gui/text/qfontdatabase.cpp
++++ forkDstPrefix/qtbase/src/gui/text/qfontdatabase.cpp
+@@ -902,7 +902,7 @@ static QtFontStyle *bestStyle(QtFontFoundry *foundry, const QtFontStyle::Key &st
+     }
+ 
+     qCDebug(lcFontMatch,  "          best style has distance 0x%x", dist );
+-    return foundry->styles[best];
++    return foundry->styles != nullptr ? foundry->styles[best] : nullptr;
+ }
+ 
+ 
